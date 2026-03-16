@@ -1,15 +1,24 @@
+import asyncio
 import uuid
 from pathlib import Path
 
 import streamlit as st
 
 from diana.config import get_config
+from diana.dashboard.sidebar import get_icon_image, setup_sidebar
 from diana.database import create_job, init_db
 from diana.models import Job, JobStatus
-from diana.tts.registry import create_engine, list_engines
+from diana.tts.registry import create_engine, get_engine_voices, list_engines
+
+st.set_page_config(
+    page_title="Diana's Upload",
+    page_icon=get_icon_image(),
+    layout="wide",
+)
 
 config = get_config()
 init_db(config.storage.database_path)
+setup_sidebar()
 
 st.header("Upload a Document")
 
@@ -27,30 +36,45 @@ with col1:
     engine_name = st.selectbox("Engine", list_engines(), index=list_engines().index(config.tts.engine))
 
 with col2:
-    # Load voices for selected engine
-    try:
-        # Build a temporary engine config to get voices
-        temp_config = get_config()
-        temp_config.tts.engine = engine_name
-        engine = create_engine(temp_config)
-        voices = engine.list_voices()
-        engine.shutdown()
-        voice_options = {v.name: v.id for v in voices}
-        voice_display = list(voice_options.keys())
-        # Find default selection
-        default_idx = 0
-        for i, v in enumerate(voices):
-            if v.id == config.tts.voice:
-                default_idx = i
-                break
-        selected_voice_name = st.selectbox("Voice", voice_display, index=default_idx)
-        selected_voice_id = voice_options[selected_voice_name]
-    except Exception as e:
-        st.warning(f"Could not load voices for {engine_name}: {e}")
-        selected_voice_id = st.text_input("Voice ID", value=config.tts.voice)
+    voices = get_engine_voices(engine_name)
+    voice_options = {v.name: v.id for v in voices}
+    voice_display = list(voice_options.keys())
+    default_idx = 0
+    for i, v in enumerate(voices):
+        if v.id == config.tts.voice:
+            default_idx = i
+            break
+    selected_voice_name = st.selectbox("Voice", voice_display, index=default_idx)
+    selected_voice_id = voice_options[selected_voice_name]
 
 with col3:
     speed = st.slider("Speed", min_value=0.5, max_value=2.0, value=config.tts.speed, step=0.1)
+
+# Voice preview
+PREVIEW_TEXT = "Hello, this is a preview of my voice. Welcome to Diana."
+
+if st.button("Preview Voice"):
+    cache_key = f"preview_{engine_name}_{selected_voice_id}"
+    if cache_key in st.session_state:
+        st.audio(st.session_state[cache_key], format="audio/wav")
+    else:
+        try:
+            with st.spinner("Generating voice preview..."):
+                engine = create_engine(config)
+                audio_bytes = asyncio.run(
+                    engine.synthesize(PREVIEW_TEXT, voice=selected_voice_id, speed=speed)
+                )
+                engine.shutdown()
+                st.session_state[cache_key] = audio_bytes
+                st.audio(audio_bytes, format="audio/wav")
+        except Exception as e:
+            st.error(f"Preview failed: {e}")
+elif any(k.startswith(f"preview_{engine_name}_{selected_voice_id}") for k in st.session_state):
+    cache_key = f"preview_{engine_name}_{selected_voice_id}"
+    if cache_key in st.session_state:
+        st.audio(st.session_state[cache_key], format="audio/wav")
+
+st.divider()
 
 if uploaded_file is not None:
     if st.button("Convert to Audio", type="primary"):

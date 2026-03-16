@@ -1,5 +1,21 @@
 from diana.config import DianaConfig
+from diana.tts.base import TTSVoice
 from diana.tts.kokoro_engine import KokoroEngine
+
+
+_ENGINE_CLASSES = {
+    "kokoro": KokoroEngine,
+}
+
+
+def _get_engine_class(engine_name: str):
+    if engine_name == "piper":
+        from diana.tts.piper_engine import PiperEngine
+        return PiperEngine
+    cls = _ENGINE_CLASSES.get(engine_name)
+    if cls is None:
+        raise ValueError(f"Unknown TTS engine: {engine_name}")
+    return cls
 
 
 def create_engine(config: DianaConfig):
@@ -19,6 +35,12 @@ def create_engine(config: DianaConfig):
 
     engine.initialize()
     return engine
+
+
+def get_engine_voices(engine_name: str) -> list[TTSVoice]:
+    """Return available voices for an engine without initializing it."""
+    cls = _get_engine_class(engine_name)
+    return list(cls.VOICES)
 
 
 def list_engines() -> list[str]:

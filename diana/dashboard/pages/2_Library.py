@@ -4,11 +4,19 @@ from pathlib import Path
 import streamlit as st
 
 from diana.config import get_config
+from diana.dashboard.sidebar import get_icon_image, setup_sidebar
 from diana.database import delete_job, init_db, list_jobs
 from diana.models import JobStatus
 
+st.set_page_config(
+    page_title="Diana's Library",
+    page_icon=get_icon_image(),
+    layout="wide",
+)
+
 config = get_config()
 init_db(config.storage.database_path)
+setup_sidebar()
 
 st.header("Library")
 
@@ -16,7 +24,9 @@ jobs = list_jobs(config.storage.database_path, limit=100)
 
 if not jobs:
     st.info("No jobs yet. Upload a document to get started.")
-    st.page_link("pages/1_Upload.py", label="Upload a Document", icon="\U0001f4c4")
+    st.page_link(
+        "pages/1_Upload.py", label="Upload a Document", icon="\U0001f4c4"
+    )
 else:
     for job in jobs:
         with st.container(border=True):
@@ -24,7 +34,9 @@ else:
 
             with col1:
                 st.markdown(f"**{job.filename}**")
-                st.caption(f"Engine: {job.tts_engine} | Voice: {job.tts_voice}")
+                st.caption(
+                    f"Engine: {job.tts_engine} | Voice: {job.tts_voice}"
+                )
 
             with col2:
                 status = job.status
@@ -35,7 +47,10 @@ else:
                     if job.error_message:
                         st.caption(job.error_message[:200])
                 elif status == JobStatus.SYNTHESIZING:
-                    st.info(f"Synthesizing... ({job.completed_chunks}/{job.total_chunks})")
+                    st.info(
+                        f"Synthesizing... "
+                        f"({job.completed_chunks}/{job.total_chunks})"
+                    )
                     if job.total_chunks > 0:
                         st.progress(job.progress)
                 elif status == JobStatus.PENDING:
@@ -58,13 +73,17 @@ else:
                             )
 
             with col4:
-                if st.button("Delete", key=f"del_{job.id}", type="secondary"):
+                if st.button(
+                    "Delete", key=f"del_{job.id}", type="secondary"
+                ):
                     delete_job(config.storage.database_path, job.id)
                     st.rerun()
 
     # Auto-refresh if any jobs are still processing
-    active_statuses = {JobStatus.PENDING, JobStatus.EXTRACTING, JobStatus.CHUNKING,
-                       JobStatus.SYNTHESIZING, JobStatus.MERGING}
+    active_statuses = {
+        JobStatus.PENDING, JobStatus.EXTRACTING, JobStatus.CHUNKING,
+        JobStatus.SYNTHESIZING, JobStatus.MERGING,
+    }
     if any(j.status in active_statuses for j in jobs):
         time.sleep(3)
         st.rerun()

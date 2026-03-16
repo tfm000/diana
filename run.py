@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def main():
-    app_path = Path(__file__).parent / "diana" / "dashboard" / "app.py"
+    app_path = Path(__file__).parent / "diana" / "dashboard" / "Home.py"
 
     if not app_path.exists():
         print(f"Error: {app_path} not found")
