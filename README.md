@@ -1,10 +1,32 @@
 # Diana — Text-to-Speech Document Converter
 
-<p align="center">
-   <img src="diana/dashboard/static/full.png" alt="CopulAX logo" width="600">
-</p>
+<table>
+<tr>
+<td width="40%">
+   <img src="diana/dashboard/static/full.png" alt="Diana" height="400">
+</td>
+<td valign="top" style="padding-left: 24px;">
 
 Diana converts PDF, EPUB, and TXT documents into high-quality MP3 audiobooks using local AI text-to-speech models. All processing runs on your machine — no API keys or cloud services required.
+
+**Features**
+- Upload PDF, EPUB, or TXT files
+- Multiple TTS engines (Kokoro, Piper) — swappable
+- Choose voice and speed per job
+- Preview voices before converting
+- Track jobs in the Library
+- All local — no internet required after setup
+
+**Quick Start**
+1. Install prerequisites (Python 3.10+, ffmpeg)
+2. `pip install -r requirements.txt`
+3. Download Kokoro model files (see below)
+4. `python run.py`
+5. Open [http://localhost:8501](http://localhost:8501)
+
+</td>
+</tr>
+</table>
 
 ## Prerequisites
 
