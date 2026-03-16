@@ -1,8 +1,25 @@
+from pathlib import Path
+
 import streamlit as st
 
 from diana.config import get_config, save_config
 from diana.dashboard.sidebar import get_icon_image, setup_sidebar
 from diana.tts.registry import get_engine_voices, list_engines
+
+
+def _sync_streamlit_config(max_upload_mb: int) -> None:
+    """Update .streamlit/config.toml with the current max upload size."""
+    config_dir = Path(".streamlit")
+    config_dir.mkdir(exist_ok=True)
+    config_path = config_dir / "config.toml"
+    config_path.write_text(
+        "[browser]\n"
+        "gatherUsageStats = false\n"
+        "\n"
+        "[server]\n"
+        "headless = true\n"
+        f"maxUploadSize = {max_upload_mb}\n"
+    )
 
 st.set_page_config(
     page_title="Diana's Settings",
@@ -62,6 +79,14 @@ gap_ms = st.number_input(
     value=config.processing.gap_ms, step=100,
 )
 
+st.subheader("Dashboard")
+
+max_upload_mb = st.number_input(
+    "Max upload size (MB)",
+    min_value=1, max_value=10240,
+    value=config.dashboard.max_upload_mb, step=100,
+)
+
 st.subheader("Kokoro Model Paths")
 kokoro_model = st.text_input(
     "Model file", value=config.tts.kokoro.model_path
@@ -82,8 +107,10 @@ if st.button("Save Settings", type="primary"):
     config.processing.chunk_max_chars = chunk_max
     config.processing.output_bitrate = bitrate
     config.processing.gap_ms = gap_ms
+    config.dashboard.max_upload_mb = max_upload_mb
     config.tts.kokoro.model_path = kokoro_model
     config.tts.kokoro.voices_path = kokoro_voices
     config.tts.piper.model_path = piper_model
     save_config(config)
-    st.success("Settings saved.")
+    _sync_streamlit_config(max_upload_mb)
+    st.success("Settings saved. Restart the app for upload size changes to take effect.")
