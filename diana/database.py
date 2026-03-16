@@ -91,6 +91,17 @@ def list_jobs(db_path: str, limit: int = 50, offset: int = 0) -> list[Job]:
     return [_row_to_job(r) for r in rows]
 
 
+def rename_job(db_path: str, job_id: str, new_name: str) -> None:
+    """Rename a job's display filename."""
+    conn = _get_connection(db_path)
+    conn.execute(
+        "UPDATE jobs SET filename = ?, updated_at = ? WHERE id = ?",
+        (new_name, datetime.now().isoformat(), job_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 def update_job_status(db_path: str, job_id: str, status: JobStatus, **kwargs) -> None:
     """Update job status and any additional fields."""
     sets = ["status = ?", "updated_at = ?"]

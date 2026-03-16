@@ -1,4 +1,4 @@
-# Diana — Text-to-Speech Document Converter
+# Diana — Text-to-Speech Document Converter <!-- v0.1.0 -->
 
 <table>
 <tr>
@@ -11,10 +11,12 @@ Diana converts PDF, EPUB, and TXT documents into high-quality MP3 audiobooks usi
 
 **Features**
 - Upload PDF, EPUB, or TXT files
+- Select specific pages or chapters to convert
 - Multiple TTS engines (Kokoro, Piper) — swappable
 - Choose voice and speed per job
 - Preview voices before converting
-- Track jobs in the Library
+- Track jobs and play/download audio in the Library
+- Configurable theme (dark, light, or auto-detect)
 - All local — no internet required after setup
 
 **Quick Start**
@@ -105,17 +107,44 @@ python run.py
 
 Open http://localhost:8501 in your browser.
 
+### Home
+
+The landing page displays Diana's artwork and quick links to Upload, Library, and Settings.
+
 ### Upload
 
-Navigate to the **Upload** page. Select a PDF, EPUB, or TXT file, choose a TTS engine and voice, then click **Convert to Audio**. Use the **Preview Voice** button to hear a sample before converting.
+Navigate to the **Upload** page to convert a document to audio.
+
+1. **Choose a file** — drag-and-drop or browse for a PDF, EPUB, or TXT file (up to the configured max upload size, default 1024 MB).
+2. **Select pages/chapters** — for PDFs and EPUBs, Diana shows the total page or chapter count and lets you specify which to convert. Enter ranges and individual numbers separated by commas (e.g. `1-3, 5, 10-15`). Leave empty to convert the entire document.
+3. **Configure TTS** — pick an engine, voice, and speed. These default to whatever is set in Settings but can be overridden per job.
+4. **Preview voice** — click **Preview Voice** to hear a short sample with your selected engine, voice, and speed before committing.
+5. **Convert** — click **Convert to Audio** to queue the job.
 
 ### Library
 
-The **Library** page shows all jobs with their status. Active jobs display a progress bar. Completed jobs have an audio player and download button.
+The **Library** page lists all conversion jobs.
+
+- **Pending / In-progress** jobs show their current stage and a progress bar during synthesis.
+- **Completed** jobs have an inline audio player, **Download MP3**, **Rename**, and **Delete** buttons.
+- **Failed** jobs display a summary of the error.
+- Click **Rename** to change a job's display name.
+- Click **Delete** to remove a job and its associated files.
+
+The page auto-refreshes while jobs are processing.
 
 ### Settings
 
-The **Settings** page lets you change the default TTS engine, voice, speed, and audio processing options. Changes are saved to `config.yaml`.
+The **Settings** page lets you configure defaults that apply to new jobs and the dashboard itself. All changes are saved to `config.yaml`.
+
+| Section | Options |
+|---------|---------|
+| **TTS Engine** | Default engine, voice (dropdown), and speed |
+| **Processing** | Max chunk size, output bitrate, silence gap between chunks |
+| **Dashboard** | Theme (dark / light / device auto-detect), max upload size (MB) |
+| **Model Paths** | Kokoro model + voices files, Piper model file |
+
+> **Note:** Theme and max upload size changes require an app restart to take effect.
 
 ### Terminate
 
@@ -140,19 +169,70 @@ Click the **Terminate** button in the sidebar to stop the server.
    - `VOICES` class attribute — list of `TTSVoice` objects
 3. Register it in `diana/tts/registry.py`
 
+## Configuration
+
+Diana uses a `config.yaml` file in the project root. Copy the example to get started:
+
+```bash
+cp config.example.yaml config.yaml
+```
+
+All settings can also be changed from the **Settings** page in the dashboard. The Streamlit-specific settings (theme, upload size, toolbar) are synced to `.streamlit/config.toml` automatically.
+
 ## Project Structure
 
 ```
 diana/
-├── run.py                  # Launch the dashboard
+├── run.py                  # Launch the dashboard (syncs config on start)
 ├── config.yaml             # Your configuration
+├── config.example.yaml     # Example config with defaults
+├── .streamlit/
+│   └── config.toml         # Auto-generated Streamlit settings
 ├── diana/
-│   ├── config.py           # Config loading
-│   ├── models.py           # Job data model
+│   ├── config.py           # Config loading and saving
+│   ├── models.py           # Job data model + page range parser
 │   ├── database.py         # SQLite job tracking
 │   ├── parsers/            # PDF, EPUB, TXT text extraction
 │   ├── tts/                # Swappable TTS engine layer
+│   │   ├── base.py         # TTSEngine protocol + TTSVoice
+│   │   ├── kokoro_engine.py
+│   │   ├── piper_engine.py
+│   │   └── registry.py     # Engine discovery
 │   ├── processing/         # Chunking, synthesis, merging pipeline
+│   │   ├── chunker.py      # Smart text chunking
+│   │   ├── synthesizer.py  # Per-chunk TTS synthesis
+│   │   ├── merger.py       # WAV → MP3 merging with ffmpeg
+│   │   ├── pipeline.py     # Full extraction → audio pipeline
+│   │   └── worker.py       # Background job worker
 │   └── dashboard/          # Streamlit web UI
-└── data/                   # Runtime data (uploads, output, models)
+│       ├── Home.py         # Home page
+│       ├── sidebar.py      # Shared sidebar, logo, global CSS
+│       ├── static/         # Images (icon.jpeg, full.png)
+│       └── pages/          # Upload, Library, Settings
+└── data/                   # Runtime data (uploads, output, models, SQLite DB)
 ```
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `Piper model not found` | Download a Piper ONNX model from [piper releases](https://github.com/rhasspy/piper/releases) and place it at the path shown in Settings |
+| Upload size too small | Increase **Max upload size** in Settings, save, and restart |
+| Theme not applying | Theme changes require a restart — stop the app and run `python run.py` again |
+| `ffmpeg not found` | Install ffmpeg (see Prerequisites) and ensure it's on your PATH |
+| Git push fails for large files | Run `git config http.postBuffer 524288000` then push again |
+
+## Changelog
+
+### v0.1.0
+
+Initial release.
+
+- Upload PDF, EPUB, and TXT files and convert to MP3
+- Page/chapter range selection for PDFs and EPUBs
+- Kokoro and Piper TTS engines with voice preview
+- Library with audio playback, download, rename, and delete
+- Configurable theme (dark / light / device auto-detect)
+- Configurable max upload size
+- Background job processing with progress tracking
+- Modular engine architecture — add new TTS backends by implementing `TTSEngine`

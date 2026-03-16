@@ -3,6 +3,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from diana import __version__
 from diana.config import get_config
 from diana.dashboard.sidebar import get_icon_image, setup_sidebar, STATIC_DIR
 from diana.database import init_db
@@ -57,3 +58,4 @@ with col_text:
     st.page_link("pages/1_Upload.py", label="Upload a Document", icon="\U0001f4c4")
     st.page_link("pages/2_Library.py", label="View Library", icon="\U0001f4da")
     st.page_link("pages/3_Settings.py", label="Settings", icon="\u2699\ufe0f")
+    st.caption(f"Version {__version__}")

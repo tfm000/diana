@@ -45,6 +45,18 @@ _GLOBAL_FONT_CSS = """
     max-height: 12rem !important;
 }
 
+/* Audio player: full width and hide broken kebab download menu */
+audio {
+    width: 100% !important;
+    min-height: 54px !important;
+}
+audio::-webkit-media-controls-enclosure {
+    overflow: hidden;
+}
+audio::-webkit-media-controls-overflow-button {
+    display: none !important;
+}
+
 /* Red terminate button in sidebar */
 [data-testid="stSidebar"] button[kind="secondary"] {
     background-color: #d32f2f !important;
