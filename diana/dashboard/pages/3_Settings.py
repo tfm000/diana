@@ -19,6 +19,9 @@ def _sync_streamlit_config(max_upload_mb: int) -> None:
         "[server]\n"
         "headless = true\n"
         f"maxUploadSize = {max_upload_mb}\n"
+        "\n"
+        "[theme]\n"
+        'font = "serif"\n'
     )
 
 st.set_page_config(

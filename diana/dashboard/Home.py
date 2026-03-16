@@ -47,7 +47,7 @@ with col_img:
         st.image(str(full_image), use_container_width=True)
 
 with col_text:
-    st.title("Diana")
+    st.markdown("# *Diana*")
     st.markdown("**Text-to-Speech Document Converter**")
     st.markdown(
         "Upload a PDF, EPUB, or TXT file and Diana will convert it "
