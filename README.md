@@ -1,5 +1,9 @@
 # Diana — Text-to-Speech Document Converter
 
+<p align="center">
+   <img src="diana/dashboard/static/full.png" alt="CopulAX logo" width="600">
+</p>
+
 Diana converts PDF, EPUB, and TXT documents into high-quality MP3 audiobooks using local AI text-to-speech models. All processing runs on your machine — no API keys or cloud services required.
 
 ## Prerequisites
