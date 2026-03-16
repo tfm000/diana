@@ -4,7 +4,7 @@ import codecs
 class TXTParser:
     supported_extensions = [".txt"]
 
-    def extract_text(self, file_path: str) -> str:
+    def extract_text(self, file_path: str, page_indices=None) -> str:
         # Detect and strip BOM if present
         with open(file_path, "rb") as f:
             raw = f.read()

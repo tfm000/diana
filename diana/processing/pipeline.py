@@ -9,7 +9,7 @@ from diana.database import (
     increment_completed_chunks,
     update_job_status,
 )
-from diana.models import JobStatus
+from diana.models import JobStatus, parse_page_range
 from diana.parsers.registry import get_parser
 from diana.processing.chunker import chunk_text
 from diana.processing.merger import merge_chunks
@@ -31,7 +31,20 @@ async def process_job(job_id: str, config: DianaConfig) -> None:
         # 1. Extract text
         update_job_status(db_path, job_id, JobStatus.EXTRACTING)
         parser = get_parser(job.upload_path)
-        text = parser.extract_text(job.upload_path)
+
+        # Resolve page/chapter range if specified
+        page_indices = None
+        if job.page_range:
+            if hasattr(parser, "page_count"):
+                total = parser.page_count(job.upload_path)
+            elif hasattr(parser, "chapter_count"):
+                total = parser.chapter_count(job.upload_path)
+            else:
+                total = 0
+            if total > 0:
+                page_indices = parse_page_range(job.page_range, total)
+
+        text = parser.extract_text(job.upload_path, page_indices=page_indices)
 
         if not text.strip():
             raise ValueError("No text could be extracted from the uploaded file")

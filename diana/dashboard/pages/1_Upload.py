@@ -77,15 +77,41 @@ elif any(k.startswith(f"preview_{engine_name}_{selected_voice_id}") for k in st.
 st.divider()
 
 if uploaded_file is not None:
+    ext = Path(uploaded_file.name).suffix.lower()
+
+    # Save to a temp path so we can inspect page/chapter count
+    tmp_dir = Path(config.storage.upload_dir)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = tmp_dir / f"_preview_{uploaded_file.name}"
+    tmp_path.write_bytes(uploaded_file.getvalue())
+
+    # Show page/chapter selection for multi-page formats
+    page_range_spec = ""
+    if ext == ".pdf":
+        from diana.parsers.pdf_parser import PDFParser
+        total = PDFParser.page_count(str(tmp_path))
+        st.info(f"This PDF has **{total}** page{'s' if total != 1 else ''}.")
+        page_range_spec = st.text_input(
+            "Page range (leave empty for all pages)",
+            placeholder="e.g. 1-3, 5, 10-15",
+            help="Specify pages using ranges and/or individual numbers, separated by commas. Pages are 1-based.",
+        )
+    elif ext == ".epub":
+        from diana.parsers.epub_parser import EPUBParser
+        total = EPUBParser.chapter_count(str(tmp_path))
+        st.info(f"This EPUB has **{total}** chapter{'s' if total != 1 else ''} (sections with text).")
+        page_range_spec = st.text_input(
+            "Chapter range (leave empty for all chapters)",
+            placeholder="e.g. 1-3, 5, 10-15",
+            help="Specify chapters using ranges and/or individual numbers, separated by commas. Chapters are 1-based.",
+        )
+
     if st.button("Convert to Audio", type="primary"):
         job_id = str(uuid.uuid4())
-        ext = Path(uploaded_file.name).suffix.lower()
 
-        # Save uploaded file
-        upload_dir = Path(config.storage.upload_dir)
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        upload_path = upload_dir / f"{job_id}_{uploaded_file.name}"
-        upload_path.write_bytes(uploaded_file.getvalue())
+        # Move temp file to its permanent name
+        upload_path = tmp_dir / f"{job_id}_{uploaded_file.name}"
+        tmp_path.rename(upload_path)
 
         # Create job
         job = Job(
@@ -96,8 +122,12 @@ if uploaded_file is not None:
             status=JobStatus.PENDING,
             tts_engine=engine_name,
             tts_voice=selected_voice_id,
+            page_range=page_range_spec if page_range_spec.strip() else None,
         )
         create_job(config.storage.database_path, job)
+
+        # Clean up temp file if it still exists (rename didn't happen for some reason)
+        tmp_path.unlink(missing_ok=True)
 
         st.success(f"Job created for **{uploaded_file.name}**. Head to the Library to track progress.")
         st.page_link("pages/2_Library.py", label="Go to Library", icon="\U0001f4da")

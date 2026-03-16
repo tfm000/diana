@@ -27,6 +27,7 @@ def init_db(db_path: str) -> None:
             status TEXT NOT NULL DEFAULT 'pending',
             tts_engine TEXT NOT NULL,
             tts_voice TEXT NOT NULL,
+            page_range TEXT,
             output_path TEXT,
             total_chunks INTEGER DEFAULT 0,
             completed_chunks INTEGER DEFAULT 0,
@@ -37,6 +38,12 @@ def init_db(db_path: str) -> None:
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
         CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at);
     """)
+    # Migration: add page_range column to existing databases
+    try:
+        conn.execute("ALTER TABLE jobs ADD COLUMN page_range TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     conn.close()
 
 
@@ -49,13 +56,14 @@ def create_job(db_path: str, job: Job) -> Job:
     conn.execute(
         """INSERT INTO jobs
            (id, filename, file_type, upload_path, status, tts_engine, tts_voice,
-            output_path, total_chunks, completed_chunks, error_message, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            page_range, output_path, total_chunks, completed_chunks, error_message,
+            created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             job.id, job.filename, job.file_type, job.upload_path,
             job.status.value, job.tts_engine, job.tts_voice,
-            job.output_path, job.total_chunks, job.completed_chunks,
-            job.error_message,
+            job.page_range, job.output_path, job.total_chunks,
+            job.completed_chunks, job.error_message,
             job.created_at.isoformat(), job.updated_at.isoformat(),
         ),
     )

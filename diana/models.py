@@ -14,6 +14,31 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
+def parse_page_range(spec: str, total: int) -> list[int]:
+    """Parse a page range spec like '1-3, 5, 8-10' into a sorted list of 0-based indices.
+
+    Pages in the spec are 1-based (user-facing). Out-of-range values are clamped.
+    Returns an empty list if spec is empty or None (meaning 'all pages').
+    """
+    if not spec or not spec.strip():
+        return []
+    pages: set[int] = set()
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            start_s, end_s = part.split("-", 1)
+            start = max(1, int(start_s.strip()))
+            end = min(total, int(end_s.strip()))
+            pages.update(range(start - 1, end))
+        else:
+            p = int(part.strip())
+            if 1 <= p <= total:
+                pages.add(p - 1)
+    return sorted(pages)
+
+
 @dataclass
 class Job:
     id: str
@@ -23,6 +48,7 @@ class Job:
     status: JobStatus
     tts_engine: str
     tts_voice: str
+    page_range: Optional[str] = None
     output_path: Optional[str] = None
     total_chunks: int = 0
     completed_chunks: int = 0
