@@ -53,7 +53,7 @@ Or download from https://ffmpeg.org/download.html and add to your PATH.
 
 1. **Clone the repository:**
    ```bash
-   git clone <repo-url> diana
+   git clone https://github.com/tfm000/diana.git
    cd diana
    ```
 
