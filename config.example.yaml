@@ -1,0 +1,29 @@
+tts:
+  engine: kokoro          # kokoro | piper
+  voice: af_heart         # Engine-specific voice ID
+  speed: 1.0
+  language: en-us
+
+  kokoro:
+    model_path: data/models/kokoro-v1.0.onnx
+    voices_path: data/models/voices-v1.0.bin
+
+  piper:
+    model_path: data/models/en_US-lessac-medium.onnx
+
+processing:
+  chunk_max_chars: 4000
+  max_concurrent_chunks: 2
+  output_bitrate: 192k
+  gap_ms: 500
+
+storage:
+  upload_dir: data/uploads
+  chunk_dir: data/chunks
+  output_dir: data/output
+  model_dir: data/models
+  database_path: data/diana.db
+
+dashboard:
+  page_title: Diana
+  max_upload_mb: 200
