@@ -67,6 +67,7 @@ class StorageConfig:
 class DashboardConfig:
     page_title: str = "Diana"
     max_upload_mb: int = 200
+    theme: str = "device"
 
 
 @dataclass
@@ -155,6 +156,7 @@ def save_config(config: DianaConfig, path: str | Path = "config.yaml") -> None:
         "dashboard": {
             "page_title": config.dashboard.page_title,
             "max_upload_mb": config.dashboard.max_upload_mb,
+            "theme": config.dashboard.theme,
         },
     }
     with open(path, "w", encoding="utf-8") as f:

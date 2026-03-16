@@ -1,9 +1,13 @@
+[client]
+toolbarMode = "minimal"
+
 [browser]
 gatherUsageStats = false
 
 [server]
 headless = true
-maxUploadSize = 1024
+maxUploadSize = 200
 
 [theme]
 font = "serif"
+base = "dark"

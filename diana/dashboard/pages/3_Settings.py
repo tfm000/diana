@@ -1,3 +1,5 @@
+import platform
+import subprocess
 from pathlib import Path
 
 import streamlit as st
@@ -7,12 +9,54 @@ from diana.dashboard.sidebar import get_icon_image, setup_sidebar
 from diana.tts.registry import get_engine_voices, list_engines
 
 
-def _sync_streamlit_config(max_upload_mb: int) -> None:
-    """Update .streamlit/config.toml with the current max upload size."""
+def _detect_device_theme() -> str:
+    """Detect the OS dark/light mode. Returns 'dark' or 'light'."""
+    try:
+        system = platform.system()
+        if system == "Darwin":
+            result = subprocess.run(
+                ["defaults", "read", "-g", "AppleInterfaceStyle"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0 and "dark" in result.stdout.strip().lower():
+                return "dark"
+        elif system == "Linux":
+            result = subprocess.run(
+                ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if "dark" in result.stdout.strip().lower():
+                return "dark"
+        elif system == "Windows":
+            import winreg
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            )
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            winreg.CloseKey(key)
+            if value == 0:
+                return "dark"
+    except Exception:
+        pass
+    return "light"
+
+
+def _sync_streamlit_config(max_upload_mb: int, theme: str = "device") -> None:
+    """Update .streamlit/config.toml with current settings."""
     config_dir = Path(".streamlit")
     config_dir.mkdir(exist_ok=True)
     config_path = config_dir / "config.toml"
+
+    if theme == "device":
+        base = _detect_device_theme()
+    else:
+        base = theme
+
     config_path.write_text(
+        "[client]\n"
+        'toolbarMode = "minimal"\n'
+        "\n"
         "[browser]\n"
         "gatherUsageStats = false\n"
         "\n"
@@ -22,6 +66,7 @@ def _sync_streamlit_config(max_upload_mb: int) -> None:
         "\n"
         "[theme]\n"
         'font = "serif"\n'
+        f'base = "{base}"\n'
     )
 
 st.set_page_config(
@@ -84,6 +129,13 @@ gap_ms = st.number_input(
 
 st.subheader("Dashboard")
 
+theme_options = ["device", "light", "dark"]
+theme = st.selectbox(
+    "Theme",
+    theme_options,
+    index=theme_options.index(config.dashboard.theme),
+)
+
 max_upload_mb = st.number_input(
     "Max upload size (MB)",
     min_value=1, max_value=10240,
@@ -111,9 +163,10 @@ if st.button("Save Settings", type="primary"):
     config.processing.output_bitrate = bitrate
     config.processing.gap_ms = gap_ms
     config.dashboard.max_upload_mb = max_upload_mb
+    config.dashboard.theme = theme
     config.tts.kokoro.model_path = kokoro_model
     config.tts.kokoro.voices_path = kokoro_voices
     config.tts.piper.model_path = piper_model
     save_config(config)
-    _sync_streamlit_config(max_upload_mb)
-    st.success("Settings saved. Restart the app for upload size changes to take effect.")
+    _sync_streamlit_config(max_upload_mb, theme)
+    st.success("Settings saved. Restart the app for theme and upload size changes to take effect.")
