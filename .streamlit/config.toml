@@ -6,7 +6,7 @@ gatherUsageStats = false
 
 [server]
 headless = true
-maxUploadSize = 200
+maxUploadSize = 1024
 
 [theme]
 font = "serif"
