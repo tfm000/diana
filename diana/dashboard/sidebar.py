@@ -81,5 +81,17 @@ def setup_sidebar() -> None:
         st.logo(str(icon_path), size="large")
 
     st.sidebar.divider()
-    if st.sidebar.button("Terminate", type="secondary", use_container_width=True):
-        os.kill(os.getpid(), signal.SIGTERM)
+    if st.session_state.get("confirm_terminate", False):
+        st.sidebar.warning("This will stop Diana.")
+        c1, c2 = st.sidebar.columns(2)
+        with c1:
+            if st.button("Confirm", key="terminate_yes"):
+                os.kill(os.getpid(), signal.SIGTERM)
+        with c2:
+            if st.button("Cancel", key="terminate_no"):
+                del st.session_state["confirm_terminate"]
+                st.rerun()
+    else:
+        if st.sidebar.button("Terminate", type="secondary", use_container_width=True):
+            st.session_state["confirm_terminate"] = True
+            st.rerun()

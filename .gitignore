@@ -25,3 +25,15 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Streamlit (auto-generated)
+.streamlit/
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env

@@ -26,4 +26,5 @@ storage:
 
 dashboard:
   page_title: Diana
-  max_upload_mb: 200
+  max_upload_mb: 1024
+  theme: device

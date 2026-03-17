@@ -10,4 +10,4 @@ maxUploadSize = 1024
 
 [theme]
 font = "serif"
-base = "dark"
+base = "light"

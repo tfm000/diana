@@ -29,11 +29,20 @@ def parse_page_range(spec: str, total: int) -> list[int]:
             continue
         if "-" in part:
             start_s, end_s = part.split("-", 1)
-            start = max(1, int(start_s.strip()))
-            end = min(total, int(end_s.strip()))
+            try:
+                start = max(1, int(start_s.strip()))
+            except ValueError:
+                raise ValueError(f"Invalid number in range: '{start_s.strip()}'")
+            try:
+                end = min(total, int(end_s.strip()))
+            except ValueError:
+                raise ValueError(f"Invalid number in range: '{end_s.strip()}'")
             pages.update(range(start - 1, end))
         else:
-            p = int(part.strip())
+            try:
+                p = int(part.strip())
+            except ValueError:
+                raise ValueError(f"Invalid page number: '{part.strip()}'")
             if 1 <= p <= total:
                 pages.add(p - 1)
     return sorted(pages)
@@ -49,6 +58,7 @@ class Job:
     tts_engine: str
     tts_voice: str
     page_range: Optional[str] = None
+    folder: str = ""
     output_path: Optional[str] = None
     total_chunks: int = 0
     completed_chunks: int = 0
@@ -68,6 +78,8 @@ class Job:
             self.created_at = datetime.fromisoformat(self.created_at)
         if isinstance(self.updated_at, str):
             self.updated_at = datetime.fromisoformat(self.updated_at)
+        if self.folder is None:
+            self.folder = ""
 
     @property
     def progress(self) -> float:

@@ -1,4 +1,4 @@
-# Diana — Text-to-Speech Document Converter <!-- v0.1.0 -->
+# Diana — Text-to-Speech Document Converter <!-- v0.2.0 -->
 
 <table>
 <tr>
@@ -126,10 +126,12 @@ Navigate to the **Upload** page to convert a document to audio.
 The **Library** page lists all conversion jobs.
 
 - **Pending / In-progress** jobs show their current stage and a progress bar during synthesis.
-- **Completed** jobs have an inline audio player, **Download MP3**, **Rename**, and **Delete** buttons.
-- **Failed** jobs display a summary of the error.
-- Click **Rename** to change a job's display name.
-- Click **Delete** to remove a job and its associated files.
+- **Completed** jobs have an inline audio player, **Download**, **Rename**, **Move**, and **Delete** buttons.
+- **Failed** jobs display an expandable error details section.
+- **Search** jobs by filename, **filter** by status, and **sort** by date, name, or status.
+- **Folders** — organize jobs into folders via the "Manage Folders" panel and per-job "Move" button.
+- **Pagination** — browse large libraries 20 jobs at a time.
+- Click **Delete** to remove a job — a confirmation prompt prevents accidental deletion.
 
 The page auto-refreshes while jobs are processing.
 
@@ -222,7 +224,29 @@ diana/
 | `ffmpeg not found` | Install ffmpeg (see Prerequisites) and ensure it's on your PATH |
 | Git push fails for large files | Run `git config http.postBuffer 524288000` then push again |
 
+## License
+
+This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
+
 ## Changelog
+
+### v0.2.0
+
+Security, robustness, and UX improvements.
+
+- **Security:** Sanitize uploaded filenames to prevent path traversal
+- **Security:** Delete and terminate actions now require confirmation
+- **Library:** Search by filename, filter by status, sort by date/name/status
+- **Library:** Organize jobs into folders (create, move, remove)
+- **Library:** Pagination (20 jobs per page)
+- **Library:** Expandable error details for failed jobs
+- **Upload:** Custom voice preview text
+- **Upload:** Page range validation with inline feedback
+- **Upload:** Double-submit prevention
+- **Settings:** Model path validation with warnings on save
+- **Infrastructure:** Apache 2.0 LICENSE, pyproject.toml, .gitignore improvements
+- **Infrastructure:** Unit tests for models, config, database, and chunker
+- **Infrastructure:** CI/CD via GitHub Actions (Python 3.10–3.13)
 
 ### v0.1.0
 

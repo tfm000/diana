@@ -1,5 +1,3 @@
-import platform
-import subprocess
 from pathlib import Path
 
 import streamlit as st
@@ -7,39 +5,7 @@ import streamlit as st
 from diana.config import get_config, save_config
 from diana.dashboard.sidebar import get_icon_image, setup_sidebar
 from diana.tts.registry import get_engine_voices, list_engines
-
-
-def _detect_device_theme() -> str:
-    """Detect the OS dark/light mode. Returns 'dark' or 'light'."""
-    try:
-        system = platform.system()
-        if system == "Darwin":
-            result = subprocess.run(
-                ["defaults", "read", "-g", "AppleInterfaceStyle"],
-                capture_output=True, text=True, timeout=5,
-            )
-            if result.returncode == 0 and "dark" in result.stdout.strip().lower():
-                return "dark"
-        elif system == "Linux":
-            result = subprocess.run(
-                ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
-                capture_output=True, text=True, timeout=5,
-            )
-            if "dark" in result.stdout.strip().lower():
-                return "dark"
-        elif system == "Windows":
-            import winreg
-            key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-            )
-            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-            winreg.CloseKey(key)
-            if value == 0:
-                return "dark"
-    except Exception:
-        pass
-    return "light"
+from diana.utils import detect_device_theme
 
 
 def _sync_streamlit_config(max_upload_mb: int, theme: str = "device") -> None:
@@ -48,10 +14,7 @@ def _sync_streamlit_config(max_upload_mb: int, theme: str = "device") -> None:
     config_dir.mkdir(exist_ok=True)
     config_path = config_dir / "config.toml"
 
-    if theme == "device":
-        base = _detect_device_theme()
-    else:
-        base = theme
+    base = detect_device_theme() if theme == "device" else theme
 
     config_path.write_text(
         "[client]\n"
@@ -156,6 +119,17 @@ piper_model = st.text_input(
 )
 
 if st.button("Save Settings", type="primary"):
+    # Validate model paths for the selected engine
+    warnings = []
+    if engine == "kokoro":
+        if not Path(kokoro_model).exists():
+            warnings.append(f"Kokoro model file not found: {kokoro_model}")
+        if not Path(kokoro_voices).exists():
+            warnings.append(f"Kokoro voices file not found: {kokoro_voices}")
+    elif engine == "piper":
+        if not Path(piper_model).exists():
+            warnings.append(f"Piper model file not found: {piper_model}")
+
     config.tts.engine = engine
     config.tts.voice = selected_voice_id
     config.tts.speed = speed
@@ -169,4 +143,10 @@ if st.button("Save Settings", type="primary"):
     config.tts.piper.model_path = piper_model
     save_config(config)
     _sync_streamlit_config(max_upload_mb, theme)
-    st.success("Settings saved. Restart the app for theme and upload size changes to take effect.")
+
+    for w in warnings:
+        st.warning(w)
+    if warnings:
+        st.success("Settings saved, but model files above are missing. TTS may fail until they are provided.")
+    else:
+        st.success("Settings saved. Restart the app for theme and upload size changes to take effect.")

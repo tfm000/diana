@@ -38,12 +38,16 @@ def init_db(db_path: str) -> None:
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
         CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at);
     """)
-    # Migration: add page_range column to existing databases
-    try:
-        conn.execute("ALTER TABLE jobs ADD COLUMN page_range TEXT")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    # Migrations: add columns to existing databases
+    for migration in [
+        "ALTER TABLE jobs ADD COLUMN page_range TEXT",
+        "ALTER TABLE jobs ADD COLUMN folder TEXT DEFAULT ''",
+    ]:
+        try:
+            conn.execute(migration)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
     conn.close()
 
 
@@ -56,13 +60,13 @@ def create_job(db_path: str, job: Job) -> Job:
     conn.execute(
         """INSERT INTO jobs
            (id, filename, file_type, upload_path, status, tts_engine, tts_voice,
-            page_range, output_path, total_chunks, completed_chunks, error_message,
-            created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            page_range, folder, output_path, total_chunks, completed_chunks,
+            error_message, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             job.id, job.filename, job.file_type, job.upload_path,
             job.status.value, job.tts_engine, job.tts_voice,
-            job.page_range, job.output_path, job.total_chunks,
+            job.page_range, job.folder, job.output_path, job.total_chunks,
             job.completed_chunks, job.error_message,
             job.created_at.isoformat(), job.updated_at.isoformat(),
         ),
@@ -162,3 +166,43 @@ def get_next_pending_job(db_path: str) -> Optional[Job]:
     if row is None:
         return None
     return _row_to_job(row)
+
+
+def count_jobs(db_path: str) -> int:
+    """Return total number of jobs."""
+    conn = _get_connection(db_path)
+    row = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()
+    conn.close()
+    return row[0]
+
+
+def list_folders(db_path: str) -> list[str]:
+    """Return distinct non-empty folder names."""
+    conn = _get_connection(db_path)
+    rows = conn.execute(
+        "SELECT DISTINCT folder FROM jobs WHERE folder != '' ORDER BY folder"
+    ).fetchall()
+    conn.close()
+    return [r["folder"] for r in rows]
+
+
+def move_job_to_folder(db_path: str, job_id: str, folder: str) -> None:
+    """Move a job into a folder (empty string = ungrouped)."""
+    conn = _get_connection(db_path)
+    conn.execute(
+        "UPDATE jobs SET folder = ?, updated_at = ? WHERE id = ?",
+        (folder, datetime.now().isoformat(), job_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_folder(db_path: str, folder: str) -> None:
+    """Remove a folder by moving all its jobs back to ungrouped."""
+    conn = _get_connection(db_path)
+    conn.execute(
+        "UPDATE jobs SET folder = '', updated_at = ? WHERE folder = ?",
+        (datetime.now().isoformat(), folder),
+    )
+    conn.commit()
+    conn.close()

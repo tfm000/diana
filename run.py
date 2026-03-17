@@ -1,51 +1,18 @@
 #!/usr/bin/env python3
 """Cross-platform launcher for the Diana dashboard."""
 
-import platform
 import subprocess
 import sys
 from pathlib import Path
 
 
-def _detect_device_theme() -> str:
-    """Detect the OS dark/light mode. Returns 'dark' or 'light'."""
-    try:
-        system = platform.system()
-        if system == "Darwin":
-            result = subprocess.run(
-                ["defaults", "read", "-g", "AppleInterfaceStyle"],
-                capture_output=True, text=True, timeout=5,
-            )
-            if result.returncode == 0 and "dark" in result.stdout.strip().lower():
-                return "dark"
-        elif system == "Linux":
-            result = subprocess.run(
-                ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
-                capture_output=True, text=True, timeout=5,
-            )
-            if "dark" in result.stdout.strip().lower():
-                return "dark"
-        elif system == "Windows":
-            import winreg
-            key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-            )
-            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-            winreg.CloseKey(key)
-            if value == 0:
-                return "dark"
-    except Exception:
-        pass
-    return "light"
-
-
 def _sync_config_toml() -> None:
     """Write .streamlit/config.toml with theme and upload size from config."""
     from diana.config import get_config
+    from diana.utils import detect_device_theme
 
     config = get_config()
-    base = _detect_device_theme() if config.dashboard.theme == "device" else config.dashboard.theme
+    base = detect_device_theme() if config.dashboard.theme == "device" else config.dashboard.theme
 
     config_dir = Path(".streamlit")
     config_dir.mkdir(exist_ok=True)

@@ -66,7 +66,7 @@ class StorageConfig:
 @dataclass
 class DashboardConfig:
     page_title: str = "Diana"
-    max_upload_mb: int = 200
+    max_upload_mb: int = 1024
     theme: str = "device"
 
 

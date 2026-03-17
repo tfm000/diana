@@ -1,4 +1,5 @@
 import asyncio
+import os
 import uuid
 from pathlib import Path
 
@@ -7,7 +8,7 @@ import streamlit as st
 from diana.config import get_config
 from diana.dashboard.sidebar import get_icon_image, setup_sidebar
 from diana.database import create_job, init_db
-from diana.models import Job, JobStatus
+from diana.models import Job, JobStatus, parse_page_range
 from diana.tts.registry import create_engine, get_engine_voices, list_engines
 
 st.set_page_config(
@@ -51,42 +52,69 @@ with col3:
     speed = st.slider("Speed", min_value=0.5, max_value=2.0, value=config.tts.speed, step=0.1)
 
 # Voice preview
-PREVIEW_TEXT = "Hello, this is a preview of my voice. Welcome to Diana."
+DEFAULT_PREVIEW_TEXT = "Hello, this is a preview of my voice. Welcome to Diana."
+preview_text = st.text_area(
+    "Preview text",
+    value=DEFAULT_PREVIEW_TEXT,
+    height=68,
+    help="Type custom text to hear how the selected voice sounds.",
+)
 
 if st.button("Preview Voice"):
-    cache_key = f"preview_{engine_name}_{selected_voice_id}"
-    if cache_key in st.session_state:
-        st.audio(st.session_state[cache_key], format="audio/wav")
+    if not preview_text.strip():
+        st.warning("Enter some text to preview.")
     else:
-        try:
-            with st.spinner("Generating voice preview..."):
-                engine = create_engine(config)
-                audio_bytes = asyncio.run(
-                    engine.synthesize(PREVIEW_TEXT, voice=selected_voice_id, speed=speed)
-                )
-                engine.shutdown()
-                st.session_state[cache_key] = audio_bytes
-                st.audio(audio_bytes, format="audio/wav")
-        except Exception as e:
-            st.error(f"Preview failed: {e}")
-elif any(k.startswith(f"preview_{engine_name}_{selected_voice_id}") for k in st.session_state):
-    cache_key = f"preview_{engine_name}_{selected_voice_id}"
+        cache_key = f"preview_{engine_name}_{selected_voice_id}_{hash(preview_text)}"
+        if cache_key in st.session_state:
+            st.audio(st.session_state[cache_key], format="audio/wav")
+        else:
+            try:
+                with st.spinner("Generating voice preview..."):
+                    engine = create_engine(config)
+                    audio_bytes = asyncio.run(
+                        engine.synthesize(preview_text, voice=selected_voice_id, speed=speed)
+                    )
+                    engine.shutdown()
+                    st.session_state[cache_key] = audio_bytes
+                    st.audio(audio_bytes, format="audio/wav")
+            except Exception as e:
+                st.error(f"Preview failed: {e}")
+else:
+    # Show cached preview if available
+    cache_key = f"preview_{engine_name}_{selected_voice_id}_{hash(preview_text)}"
     if cache_key in st.session_state:
         st.audio(st.session_state[cache_key], format="audio/wav")
 
 st.divider()
 
+# Reset submission state when a new file is uploaded
+if "last_uploaded_name" not in st.session_state:
+    st.session_state.last_uploaded_name = None
+
 if uploaded_file is not None:
-    ext = Path(uploaded_file.name).suffix.lower()
+    safe_name = os.path.basename(uploaded_file.name)
+    ext = Path(safe_name).suffix.lower()
+
+    # Reset submit flag on new file
+    if st.session_state.last_uploaded_name != safe_name:
+        st.session_state.last_uploaded_name = safe_name
+        st.session_state.job_submitted = False
 
     # Save to a temp path so we can inspect page/chapter count
     tmp_dir = Path(config.storage.upload_dir)
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    tmp_path = tmp_dir / f"_preview_{uploaded_file.name}"
+    tmp_path = tmp_dir / f"_preview_{safe_name}"
+
+    # Verify resolved path is within upload dir
+    if not str(tmp_path.resolve()).startswith(str(tmp_dir.resolve())):
+        st.error("Invalid filename.")
+        st.stop()
+
     tmp_path.write_bytes(uploaded_file.getvalue())
 
     # Show page/chapter selection for multi-page formats
     page_range_spec = ""
+    total = 0
     if ext == ".pdf":
         from diana.parsers.pdf_parser import PDFParser
         total = PDFParser.page_count(str(tmp_path))
@@ -106,17 +134,36 @@ if uploaded_file is not None:
             help="Specify chapters using ranges and/or individual numbers, separated by commas. Chapters are 1-based.",
         )
 
-    if st.button("Convert to Audio", type="primary"):
+    # Validate page range input
+    if page_range_spec.strip() and total > 0:
+        try:
+            parsed = parse_page_range(page_range_spec, total)
+            if parsed:
+                display = ", ".join(str(p + 1) for p in parsed[:20])
+                if len(parsed) > 20:
+                    display += "..."
+                st.success(f"Will convert {len(parsed)} of {total}: {display}")
+            else:
+                st.warning("No valid pages matched. All pages will be converted.")
+        except ValueError as e:
+            st.error(f"Invalid page range: {e}")
+
+    if st.button(
+        "Convert to Audio",
+        type="primary",
+        disabled=st.session_state.get("job_submitted", False),
+    ):
+        st.session_state.job_submitted = True
         job_id = str(uuid.uuid4())
 
         # Move temp file to its permanent name
-        upload_path = tmp_dir / f"{job_id}_{uploaded_file.name}"
+        upload_path = tmp_dir / f"{job_id}_{safe_name}"
         tmp_path.rename(upload_path)
 
         # Create job
         job = Job(
             id=job_id,
-            filename=uploaded_file.name,
+            filename=safe_name,
             file_type=ext.lstrip("."),
             upload_path=str(upload_path),
             status=JobStatus.PENDING,
@@ -126,8 +173,8 @@ if uploaded_file is not None:
         )
         create_job(config.storage.database_path, job)
 
-        # Clean up temp file if it still exists (rename didn't happen for some reason)
+        # Clean up temp file if it still exists
         tmp_path.unlink(missing_ok=True)
 
-        st.success(f"Job created for **{uploaded_file.name}**. Head to the Library to track progress.")
+        st.success(f"Job created for **{safe_name}**. Head to the Library to track progress.")
         st.page_link("pages/2_Library.py", label="Go to Library", icon="\U0001f4da")
