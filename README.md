@@ -1,5 +1,16 @@
 # Diana — Text-to-Speech Document Converter <!-- v1.0.0 -->
 
+<p align="center">
+      <img src="https://img.shields.io/badge/mac%20os-000000?style=for-the-badge&logo=apple&logoColor=white"
+         alt="mac os">
+      <img src="https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white"
+         alt="windows">
+</p>
+<p align="center">
+   <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="python3.10+">
+   <img src="https://img.shields.io/badge/Maintained%3F-yes-green.svg" alt="maintained">
+</p>
+
 <table>
 <tr>
 <td width="40%">
