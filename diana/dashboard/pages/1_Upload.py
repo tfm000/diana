@@ -70,10 +70,7 @@ if st.button("Preview Voice"):
         else:
             try:
                 with st.spinner("Generating voice preview..."):
-                    # Override config engine with UI selection for preview
-                    preview_config = config
-                    preview_config.tts.engine = engine_name
-                    engine = create_engine(preview_config)
+                    engine = create_engine(config, engine_name=engine_name)
                     audio_bytes = asyncio.run(
                         engine.synthesize(preview_text, voice=selected_voice_id, speed=speed)
                     )

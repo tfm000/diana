@@ -18,9 +18,12 @@ def _get_engine_class(engine_name: str):
     return cls
 
 
-def create_engine(config: DianaConfig):
-    """Create and initialize the configured TTS engine."""
-    engine_name = config.tts.engine
+def create_engine(config: DianaConfig, engine_name: str | None = None):
+    """Create and initialize a TTS engine.
+
+    Uses engine_name if provided, otherwise falls back to config.tts.engine.
+    """
+    engine_name = engine_name or config.tts.engine
 
     if engine_name == "kokoro":
         engine = KokoroEngine(

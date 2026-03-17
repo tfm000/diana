@@ -34,10 +34,14 @@ def clean_text(text: str) -> str:
     text = _remove_remaining_latex(text)
     text = _remove_citations(text)
     text = _remove_figure_table_refs(text)
+    text = _remove_tables(text)
+    text = _remove_chart_fragments(text)
+    text = _remove_common_footers(text)
     text = _strip_urls(text)
     text = _normalize_unicode(text)
     text = _remove_repeated_lines(text)
     text = _remove_page_numbers(text)
+    text = _strip_non_speakable(text)
     text = _collapse_whitespace(text)
 
     return text.strip()
@@ -122,6 +126,97 @@ def _remove_figure_table_refs(text: str) -> str:
     return text
 
 
+def _remove_tables(text: str) -> str:
+    """Remove tabular content: pipe tables, tab-separated rows, and aligned columns."""
+    lines = text.split("\n")
+    cleaned = []
+    for line in lines:
+        stripped = line.strip()
+        # Markdown/pipe table rows: | col1 | col2 | col3 |
+        if re.match(r"^\|.*\|$", stripped):
+            continue
+        # Markdown table dividers: |---|---|---|
+        if re.match(r"^\|[\s\-:|]+\|$", stripped):
+            continue
+        # Tab-separated rows with 3+ columns (common table extraction artifact)
+        if stripped.count("\t") >= 2:
+            continue
+        # Lines that are mostly numbers/short tokens separated by spaces
+        # (e.g. "12.5  34.2  56.1  78.9" — extracted table data)
+        tokens = stripped.split()
+        if len(tokens) >= 3 and sum(1 for t in tokens if re.match(r"^[\d.,;:%+\-]+$", t)) / len(tokens) > 0.6:
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned)
+
+
+def _remove_chart_fragments(text: str) -> str:
+    """Remove short fragmented lines typical of chart/graph text extraction.
+
+    Chart text extracted from PDFs tends to appear as clusters of very short
+    lines — axis labels, legend entries, tick values, etc.
+    """
+    lines = text.split("\n")
+    cleaned = []
+    i = 0
+    while i < len(lines):
+        # Look for clusters of 3+ consecutive short lines (< 30 chars)
+        # that aren't normal prose (no sentence-ending punctuation)
+        cluster_start = i
+        while i < len(lines):
+            stripped = lines[i].strip()
+            is_short_fragment = (
+                len(stripped) < 30
+                and stripped  # not empty
+                and not stripped.endswith((".", "!", "?", ":"))
+                and not re.match(r"^(Chapter|Section|Part)\s", stripped, re.IGNORECASE)
+            )
+            if is_short_fragment:
+                i += 1
+            else:
+                break
+        cluster_len = i - cluster_start
+        if cluster_len >= 3:
+            # Skip the cluster (likely chart/axis text)
+            i = cluster_start + cluster_len
+        else:
+            # Keep these lines
+            for j in range(cluster_start, cluster_start + cluster_len):
+                cleaned.append(lines[j])
+            if i == cluster_start:
+                cleaned.append(lines[i])
+                i += 1
+    return "\n".join(cleaned)
+
+
+def _remove_common_footers(text: str) -> str:
+    """Remove common footer/header patterns from extracted text."""
+    # Each pattern removes the entire line it matches
+    footer_patterns = [
+        # Copyright lines
+        r"^\s*(?:©|Copyright|\(c\))\s.*$",
+        # "All rights reserved"
+        r"^\s*All\s+rights\s+reserved\.?\s*$",
+        # DOI lines
+        r"^\s*(?:DOI|doi)\s*[:.]?\s*10\.\S+\s*$",
+        # arXiv identifiers
+        r"^\s*arXiv:\S+\s*$",
+        # Journal / conference footers (e.g. "Proceedings of ...", "Journal of ...")
+        r"^\s*(?:Proceedings|Journal|Transactions|Annals)\s+of\s+.*$",
+        # "Published in ..." / "Accepted for ..."
+        r"^\s*(?:Published|Accepted|Submitted|Received|Revised)\s+(?:in|for|by|on)\s.*$",
+        # "Preprint" / "Draft" / "Under review"
+        r"^\s*(?:Preprint|Draft|Under\s+review|Working\s+paper)\.?\s*$",
+        # ISSN / ISBN lines
+        r"^\s*(?:ISSN|ISBN)[\s:\-]*[\dX\-]+\s*$",
+        # "Page X of Y" patterns
+        r"^\s*[Pp]age\s+\d+\s+of\s+\d+\s*$",
+    ]
+    combined = "|".join(f"(?:{p})" for p in footer_patterns)
+    text = re.sub(combined, "", text, flags=re.MULTILINE | re.IGNORECASE)
+    return text
+
+
 def _strip_urls(text: str) -> str:
     """Remove URLs."""
     text = re.sub(r"https?://\S+", "", text)
@@ -170,6 +265,22 @@ def _remove_repeated_lines(text: str, threshold: int = 3) -> str:
 def _remove_page_numbers(text: str) -> str:
     """Remove standalone page numbers (lines that are just a number)."""
     return re.sub(r"(?m)^\s*\d{1,4}\s*$", "", text)
+
+
+# Characters safe for TTS: basic ASCII printable + newline/tab.
+# Kokoro's ONNX tokenizer has a 510-token vocabulary and crashes on
+# characters outside its expected range.
+_SPEAKABLE_RE = re.compile(r"[^ -~\n\t]")
+
+
+def _strip_non_speakable(text: str) -> str:
+    """Remove any character outside printable ASCII (plus newline/tab).
+
+    This is a safety net after all other cleaning — anything that slipped
+    through (math symbols, accented chars, emoji, etc.) gets dropped so the
+    TTS tokenizer never sees an out-of-vocabulary character.
+    """
+    return _SPEAKABLE_RE.sub("", text)
 
 
 def _collapse_whitespace(text: str) -> str:

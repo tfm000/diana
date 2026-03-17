@@ -65,8 +65,8 @@ async def process_job(job_id: str, config: DianaConfig) -> None:
             total_chunks=len(chunks),
         )
 
-        # 3. Synthesize each chunk
-        engine = create_engine(config)
+        # 3. Synthesize each chunk — use the job's engine, not the config default
+        engine = create_engine(config, engine_name=job.tts_engine)
         chunk_dir = Path(config.storage.chunk_dir) / job_id
         chunk_dir.mkdir(parents=True, exist_ok=True)
 
