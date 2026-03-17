@@ -2,7 +2,7 @@ import logging
 
 from diana.config import LLMConfig
 from diana.llm.client import llm_complete
-from diana.processing.cleaner import clean_text, _strip_non_speakable
+from diana.processing.cleaner import clean_text, strip_non_speakable
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ async def _clean_chunk(chunk: str, llm_cfg: LLMConfig) -> str:
 async def llm_clean_text(text: str, llm_cfg: LLMConfig) -> str:
     """Clean text using an LLM. Falls back to rule-based clean_text() on any error.
 
-    After LLM cleaning, still applies _strip_non_speakable() as a safety net
+    After LLM cleaning, still applies strip_non_speakable() as a safety net
     to ensure no characters outside printable ASCII reach the TTS tokenizer.
     """
     chunks = _split_for_llm(text, llm_cfg.chunk_size)
@@ -93,4 +93,4 @@ async def llm_clean_text(text: str, llm_cfg: LLMConfig) -> str:
             cleaned.append(clean_text(chunk))
 
     combined = "\n\n".join(cleaned)
-    return _strip_non_speakable(combined)
+    return strip_non_speakable(combined)

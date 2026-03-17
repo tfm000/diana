@@ -216,7 +216,7 @@ def increment_completed_chunks(db_path: str, job_id: str) -> None:
     conn.close()
 
 
-def delete_job(db_path: str, job_id: str) -> None:
+def delete_job(db_path: str, job_id: str, chunk_base: str = "data/chunks") -> None:
     """Delete a job and clean up its associated files."""
     job = get_job(db_path, job_id)
     if job is None:
@@ -229,7 +229,7 @@ def delete_job(db_path: str, job_id: str) -> None:
         Path(job.output_path).unlink(missing_ok=True)
 
     # Clean up chunk directory if it exists
-    chunk_dir = Path("data/chunks") / job_id
+    chunk_dir = Path(chunk_base) / job_id
     if chunk_dir.exists():
         shutil.rmtree(chunk_dir, ignore_errors=True)
 

@@ -155,7 +155,7 @@ The **Library** page lists all conversion jobs.
 - **Completed** jobs have an inline audio player, **Download**, **Rename**, **Move**, and **Delete** buttons.
 - **Failed** jobs display an expandable error details section.
 - **Search** jobs by filename, **filter** by status, and **sort** by date, name, or status.
-- **Folders** — organize jobs into folders via the "Manage Folders" panel and per-job "Move" button.
+- **Folders** — organise jobs into folders via the "Manage Folders" panel and per-job "Move" button.
 - **Pagination** — browse large libraries 20 jobs at a time.
 
 The page auto-refreshes while jobs are processing.
@@ -386,7 +386,7 @@ Security, robustness, and UX improvements.
 - **Security:** Sanitize uploaded filenames to prevent path traversal
 - **Security:** Delete and terminate actions now require confirmation
 - **Library:** Search by filename, filter by status, sort by date/name/status
-- **Library:** Organize jobs into folders (create, move, remove)
+- **Library:** Organise jobs into folders (create, move, remove)
 - **Library:** Pagination (20 jobs per page)
 - **Library:** Expandable error details for failed jobs
 - **Upload:** Custom voice preview text

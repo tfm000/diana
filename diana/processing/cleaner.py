@@ -41,7 +41,7 @@ def clean_text(text: str) -> str:
     text = _normalize_unicode(text)
     text = _remove_repeated_lines(text)
     text = _remove_page_numbers(text)
-    text = _strip_non_speakable(text)
+    text = strip_non_speakable(text)
     text = _collapse_whitespace(text)
 
     return text.strip()
@@ -273,7 +273,7 @@ def _remove_page_numbers(text: str) -> str:
 _SPEAKABLE_RE = re.compile(r"[^ -~\n\t]")
 
 
-def _strip_non_speakable(text: str) -> str:
+def strip_non_speakable(text: str) -> str:
     """Remove any character outside printable ASCII (plus newline/tab).
 
     This is a safety net after all other cleaning — anything that slipped
