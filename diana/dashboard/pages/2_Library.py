@@ -21,7 +21,7 @@ config = get_config()
 init_db(config.storage.database_path)
 setup_sidebar()
 
-st.header("Library")
+st.markdown("## *Library*")
 
 PAGE_SIZE = 20
 

@@ -21,7 +21,7 @@ config = get_config()
 init_db(config.storage.database_path)
 setup_sidebar()
 
-st.header("Upload a Document")
+st.markdown("## *Upload a Document*")
 
 uploaded_file = st.file_uploader(
     "Choose a PDF, EPUB, or TXT file",
@@ -37,7 +37,7 @@ with col1:
     engine_name = st.selectbox("Engine", list_engines(), index=list_engines().index(config.tts.engine))
 
 with col2:
-    voices = get_engine_voices(engine_name)
+    voices = get_engine_voices(engine_name, config=config)
     voice_options = {v.name: v.id for v in voices}
     voice_display = list(voice_options.keys())
     default_idx = 0
@@ -45,11 +45,19 @@ with col2:
         if v.id == config.tts.voice:
             default_idx = i
             break
-    selected_voice_name = st.selectbox("Voice", voice_display, index=default_idx)
-    selected_voice_id = voice_options[selected_voice_name]
+    selected_voice_name = st.selectbox(
+        "Voice", voice_display, index=default_idx, key=f"voice_{engine_name}"
+    )
+    selected_voice_id = voice_options[selected_voice_name] if voice_options else ""
 
 with col3:
     speed = st.slider("Speed", min_value=0.5, max_value=2.0, value=config.tts.speed, step=0.1)
+
+# Reset job_submitted when engine or voice changes so user can re-submit the same file
+_curr_combo = f"{engine_name}:{selected_voice_id}"
+if st.session_state.get("_last_engine_voice") != _curr_combo:
+    st.session_state["_last_engine_voice"] = _curr_combo
+    st.session_state["job_submitted"] = False
 
 # Voice preview
 DEFAULT_PREVIEW_TEXT = "Hello, this is a preview of my voice. Welcome to Diana."
@@ -60,13 +68,18 @@ preview_text = st.text_area(
     help="Type custom text to hear how the selected voice sounds.",
 )
 
+_API_ENGINES = {"openai_tts", "elevenlabs"}
+_audio_fmt = "audio/mp3" if engine_name in _API_ENGINES else "audio/wav"
+
 if st.button("Preview Voice"):
     if not preview_text.strip():
         st.warning("Enter some text to preview.")
+    elif not selected_voice_id:
+        st.warning("No voices available for this engine. Check your API key in Settings.")
     else:
         cache_key = f"preview_{engine_name}_{selected_voice_id}_{hash(preview_text)}"
         if cache_key in st.session_state:
-            st.audio(st.session_state[cache_key], format="audio/wav")
+            st.audio(st.session_state[cache_key], format=_audio_fmt)
         else:
             try:
                 with st.spinner("Generating voice preview..."):
@@ -76,14 +89,14 @@ if st.button("Preview Voice"):
                     )
                     engine.shutdown()
                     st.session_state[cache_key] = audio_bytes
-                    st.audio(audio_bytes, format="audio/wav")
+                    st.audio(audio_bytes, format=_audio_fmt)
             except Exception as e:
                 st.error(f"Preview failed: {e}")
 else:
     # Show cached preview if available
     cache_key = f"preview_{engine_name}_{selected_voice_id}_{hash(preview_text)}"
     if cache_key in st.session_state:
-        st.audio(st.session_state[cache_key], format="audio/wav")
+        st.audio(st.session_state[cache_key], format=_audio_fmt)
 
 st.divider()
 
