@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from diana.config import LLMConfig
@@ -63,34 +64,43 @@ async def _clean_chunk(chunk: str, llm_cfg: LLMConfig) -> str:
     )
 
 
-async def llm_clean_text(text: str, llm_cfg: LLMConfig) -> str:
-    """Clean text using an LLM. Falls back to rule-based clean_text() on any error.
-
-    After LLM cleaning, still applies strip_non_speakable() as a safety net
-    to ensure no characters outside printable ASCII reach the TTS tokenizer.
-    """
-    chunks = _split_for_llm(text, llm_cfg.chunk_size)
-    cleaned: list[str] = []
-
-    for i, chunk in enumerate(chunks):
+async def _clean_chunk_with_fallback(
+    i: int, chunk: str, llm_cfg: LLMConfig, semaphore: asyncio.Semaphore,
+) -> str:
+    """Clean a single chunk with concurrency limiting and fallback."""
+    async with semaphore:
         try:
             result = await _clean_chunk(chunk, llm_cfg)
-            # Safety check: if result is suspiciously short (< 10% of input),
-            # the LLM likely truncated — fall back for this chunk.
             if result and len(result.strip()) >= len(chunk.strip()) * 0.1:
-                cleaned.append(result)
-            else:
-                logger.warning(
-                    "LLM cleaning produced unexpectedly short output for chunk %d "
-                    "(%d chars → %d chars). Using rule-based fallback.",
-                    i, len(chunk), len(result),
-                )
-                cleaned.append(clean_text(chunk))
+                return result
+            logger.warning(
+                "LLM cleaning produced unexpectedly short output for chunk %d "
+                "(%d chars → %d chars). Using rule-based fallback.",
+                i, len(chunk), len(result),
+            )
+            return clean_text(chunk)
         except Exception as exc:
             logger.warning(
                 "LLM cleaning failed for chunk %d, using rule-based fallback: %s", i, exc
             )
-            cleaned.append(clean_text(chunk))
+            return clean_text(chunk)
+
+
+async def llm_clean_text(text: str, llm_cfg: LLMConfig) -> str:
+    """Clean text using an LLM. Falls back to rule-based clean_text() on any error.
+
+    Chunks are processed concurrently (up to _MAX_CONCURRENT_LLM_CALLS at a time)
+    to speed up large documents. After LLM cleaning, still applies
+    strip_non_speakable() as a safety net to ensure no characters outside
+    printable ASCII reach the TTS tokenizer.
+    """
+    chunks = _split_for_llm(text, llm_cfg.chunk_size)
+    semaphore = asyncio.Semaphore(llm_cfg.max_concurrent_calls)
+
+    cleaned = await asyncio.gather(*(
+        _clean_chunk_with_fallback(i, chunk, llm_cfg, semaphore)
+        for i, chunk in enumerate(chunks)
+    ))
 
     combined = "\n\n".join(cleaned)
     return strip_non_speakable(combined)

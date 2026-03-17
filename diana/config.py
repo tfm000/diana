@@ -68,6 +68,7 @@ class LLMConfig:
     model: str = ""               # empty = provider default
     target_language: str = ""     # empty = no translation
     chunk_size: int = 8000        # chars per LLM call
+    max_concurrent_calls: int = 4 # parallel LLM requests
 
 
 @dataclass
@@ -206,6 +207,7 @@ def save_config(config: DianaConfig, path: str | Path = "config.yaml") -> None:
             "model": config.llm.model,
             "target_language": config.llm.target_language,
             "chunk_size": config.llm.chunk_size,
+            "max_concurrent_calls": config.llm.max_concurrent_calls,
         },
         "news": {
             "max_stories_per_category": config.news.max_stories_per_category,

@@ -155,6 +155,13 @@ llm_language = st.text_input(
     placeholder="e.g. English, Spanish",
     disabled=not llm_enabled,
 )
+llm_max_concurrent = st.number_input(
+    "Max concurrent LLM calls",
+    min_value=1, max_value=16,
+    value=config.llm.max_concurrent_calls, step=1,
+    help="Number of text chunks processed in parallel. Higher values are faster but may hit API rate limits.",
+    disabled=not llm_enabled,
+)
 
 _ENV_RE = __import__("re").compile(r"^\$\{[A-Z_][A-Z0-9_]*\}$")
 if llm_enabled and llm_api_key and not _ENV_RE.match(llm_api_key.strip()):
@@ -259,6 +266,7 @@ if st.button("Save Settings", type="primary"):
     config.llm.api_key = llm_api_key
     config.llm.model = llm_model
     config.llm.target_language = llm_language
+    config.llm.max_concurrent_calls = int(llm_max_concurrent)
     config.news.max_stories_per_category = int(news_max_stories)
     save_config(config)
     _sync_streamlit_config(max_upload_mb, theme)
