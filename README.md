@@ -360,7 +360,7 @@ Major feature release: cloud TTS, LLM cleaning, news aggregator, and web-to-audi
 
 - **Cloud TTS:** OpenAI TTS (tts-1 / tts-1-hd) and ElevenLabs engines added alongside Kokoro and Piper
 - **LLM Text Cleaning:** Optional pre-processing via OpenAI, Anthropic, or Google Gemini — strips tables, charts, citations, boilerplate; supports translation
-- **News Page:** Add newspaper sources with multiple RSS feeds and group tags; fetch top stories per category via a single batched LLM call; archive.ph fallback for paywalled sites; stories persisted across sessions; convert to audio
+- **News Page:** Add newspaper sources with multiple RSS feeds and group tags; fetch top stories per category via a single batched LLM call; archive.ph fallback for paywalled sites; stories persisted across sessions; convert to audio; export/import source lists as JSON to share across devices or with others
 - **Web URL to Audio:** Paste any URL, scrape + clean + convert in one step
 - **UI:** Sidebar nav items italic; all page titles italic; Settings moved to last sidebar position; news categories collapsible
 - **News categories:** Merged to 7 (Technology & Science, Sports & Entertainment combined)

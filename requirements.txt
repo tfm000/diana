@@ -14,6 +14,7 @@ piper-tts>=1.0.0
 
 # Audio processing
 pydub>=0.25.1
+pyaudioop>=0.0.1; python_version>="3.13"
 
 # Configuration
 pyyaml>=6.0
