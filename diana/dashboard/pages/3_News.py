@@ -583,7 +583,7 @@ ordered_cats = sorted(
 selected_story_keys: set[str] = set()
 
 for cat in ordered_cats:
-    with st.expander(cat, expanded=True):
+    with st.expander(cat, expanded=False):
         for story in by_category[cat]:
             story_key = f"{story.source_name}::{story.headline}"
             cols = st.columns([0.03, 0.97])

@@ -23,10 +23,9 @@ Diana converts documents, webpages, and news into high-quality MP3 audio using l
 
 **Quick Start**
 1. Install prerequisites (Python 3.10+, ffmpeg)
-2. `pip install -r requirements.txt`
-3. Download Kokoro model files (see below)
-4. `python run.py`
-5. Open [http://localhost:8501](http://localhost:8501)
+2. Run `./setup.sh` (macOS/Linux) or `setup.bat` (Windows)
+3. Double-click `Diana.command` (macOS) or `Diana.bat` (Windows)
+4. Open [http://localhost:8501](http://localhost:8501)
 
 </td>
 </tr>
@@ -59,12 +58,29 @@ Or download from https://ffmpeg.org/download.html and add to your PATH.
    cd diana
    ```
 
-2. **Create a virtual environment:**
+2. **Run the setup script** (creates venv, installs deps, downloads all models, copies config):
+
+   macOS / Linux:
+   ```bash
+   ./setup.sh
+   ```
+
+   Windows:
+   ```bat
+   setup.bat
+   ```
+
+   This creates a `Diana.command` (macOS) or `Diana.bat` (Windows) launcher you can double-click to start Diana.
+
+<details>
+<summary>Manual installation (if you prefer not to use the setup script)</summary>
+
+1. **Create a virtual environment:**
    ```bash
    python -m venv .venv
    ```
 
-3. **Activate the virtual environment:**
+2. **Activate the virtual environment:**
 
    macOS / Linux:
    ```bash
@@ -76,12 +92,12 @@ Or download from https://ffmpeg.org/download.html and add to your PATH.
    .venv\Scripts\activate
    ```
 
-4. **Install dependencies:**
+3. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-5. **Download the Kokoro TTS model files** (~340 MB total):
+4. **Download the Kokoro TTS model files** (~340 MB total):
    ```bash
    # macOS / Linux
    curl -L -o data/models/kokoro-v1.0.onnx https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
@@ -95,10 +111,18 @@ Or download from https://ffmpeg.org/download.html and add to your PATH.
    Invoke-WebRequest -Uri "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin" -OutFile "data\models\voices-v1.0.bin"
    ```
 
+5. **Download the Piper TTS model files** (~60 MB):
+   ```bash
+   curl -L -o data/models/en_US-lessac-medium.onnx https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+   curl -L -o data/models/en_US-lessac-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+   ```
+
 6. **Copy the example config:**
    ```bash
    cp config.example.yaml config.yaml
    ```
+
+</details>
 
 ## Usage
 
@@ -264,6 +288,10 @@ The Streamlit-specific settings (theme, upload size, toolbar) are synced to `.st
 ```
 diana/
 ├── run.py                  # Launch the dashboard (syncs config on start)
+├── setup.sh                # One-command setup (macOS / Linux)
+├── setup.bat               # One-command setup (Windows)
+├── Diana.command            # Double-click launcher (macOS, created by setup)
+├── Diana.bat                # Double-click launcher (Windows, created by setup)
 ├── config.yaml             # Your configuration
 ├── config.example.yaml     # Example config with defaults
 ├── .streamlit/
@@ -311,7 +339,7 @@ diana/
 
 | Problem | Solution |
 |---------|----------|
-| `Piper model not found` | Download a Piper ONNX model from [piper releases](https://huggingface.co/rhasspy/piper-voices) and place it at the path shown in Settings |
+| `Piper model not found` | Re-run `./setup.sh` (or `setup.bat`) to auto-download, or manually download from [piper releases](https://huggingface.co/rhasspy/piper-voices) and place it at the path shown in Settings |
 | Upload size too small | Increase **Max upload size** in Settings, save, and restart |
 | Theme not applying | Theme changes require a restart — stop the app and run `python run.py` again |
 | `ffmpeg not found` | Install ffmpeg (see Prerequisites) and ensure it's on your PATH |
