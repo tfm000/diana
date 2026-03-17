@@ -21,7 +21,7 @@ config = get_config()
 init_db(config.storage.database_path)
 setup_sidebar()
 
-st.header("Library")
+st.markdown("## *Library*")
 
 PAGE_SIZE = 20
 
@@ -79,10 +79,7 @@ if st.session_state.get("_new_folder") and st.session_state["_new_folder"] not i
 # When filtering, fetch all; otherwise use pagination
 use_client_filter = bool(search_query) or status_filter != "All" or selected_folder != "All"
 
-if use_client_filter:
-    all_jobs = list_jobs(config.storage.database_path, limit=10000)
-else:
-    all_jobs = list_jobs(config.storage.database_path, limit=10000)
+all_jobs = list_jobs(config.storage.database_path, limit=10000)
 
 filtered_jobs = all_jobs
 
@@ -230,7 +227,7 @@ else:
                             yc, nc = st.columns(2)
                             with yc:
                                 if st.button("Yes", key=f"del_yes_{job.id}"):
-                                    delete_job(config.storage.database_path, job.id)
+                                    delete_job(config.storage.database_path, job.id, chunk_base=config.storage.chunk_dir)
                                     st.session_state.pop(delete_key, None)
                                     st.rerun()
                             with nc:
@@ -276,7 +273,7 @@ else:
                         yc, nc = st.columns(2)
                         with yc:
                             if st.button("Yes", key=f"del_yes_{job.id}"):
-                                delete_job(config.storage.database_path, job.id)
+                                delete_job(config.storage.database_path, job.id, chunk_base=config.storage.chunk_dir)
                                 st.session_state.pop(delete_key, None)
                                 st.rerun()
                         with nc:

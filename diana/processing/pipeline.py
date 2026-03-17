@@ -12,7 +12,9 @@ from diana.database import (
 from diana.models import JobStatus, parse_page_range
 from diana.parsers.registry import get_parser
 from diana.processing.chunker import chunk_text
+from diana.llm.registry import get_llm_config
 from diana.processing.cleaner import clean_text
+from diana.processing.llm_cleaner import llm_clean_text
 from diana.processing.merger import merge_chunks
 from diana.processing.synthesizer import synthesize_chunk
 from diana.tts.registry import create_engine
@@ -31,24 +33,31 @@ async def process_job(job_id: str, config: DianaConfig) -> None:
     try:
         # 1. Extract text
         update_job_status(db_path, job_id, JobStatus.EXTRACTING)
-        parser = get_parser(job.upload_path)
 
-        # Resolve page/chapter range if specified
-        page_indices = None
-        if job.page_range:
-            if hasattr(parser, "page_count"):
-                total = parser.page_count(job.upload_path)
-            elif hasattr(parser, "chapter_count"):
-                total = parser.chapter_count(job.upload_path)
-            else:
-                total = 0
-            if total > 0:
-                page_indices = parse_page_range(job.page_range, total)
+        if job.file_type == "web":
+            from diana.news.scraper import scrape_source
+            _, text = scrape_source(job.upload_path)
+        else:
+            parser = get_parser(job.upload_path)
+            # Resolve page/chapter range if specified
+            page_indices = None
+            if job.page_range:
+                if hasattr(parser, "page_count"):
+                    total = parser.page_count(job.upload_path)
+                elif hasattr(parser, "chapter_count"):
+                    total = parser.chapter_count(job.upload_path)
+                else:
+                    total = 0
+                if total > 0:
+                    page_indices = parse_page_range(job.page_range, total)
+            text = parser.extract_text(job.upload_path, page_indices=page_indices)
 
-        text = parser.extract_text(job.upload_path, page_indices=page_indices)
-
-        # Clean text for TTS compatibility (remove LaTeX, citations, etc.)
-        text = clean_text(text)
+        # Clean text for TTS compatibility
+        llm_cfg = get_llm_config(config)
+        if llm_cfg is not None:
+            text = await llm_clean_text(text, llm_cfg)
+        else:
+            text = clean_text(text)
 
         if not text.strip():
             raise ValueError("No text could be extracted from the uploaded file")

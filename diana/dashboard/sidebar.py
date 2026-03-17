@@ -36,9 +36,10 @@ _GLOBAL_FONT_CSS = """
     font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif !important;
 }
 
-/* Sidebar nav text size */
+/* Sidebar nav text */
 [data-testid="stSidebarNav"] span {
     font-size: 1.1rem !important;
+    font-style: italic !important;
 }
 
 /* Sidebar logo size */

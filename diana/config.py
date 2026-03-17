@@ -37,6 +37,18 @@ class PiperConfig:
 
 
 @dataclass
+class OpenAITTSConfig:
+    api_key: str = ""
+    model: str = "tts-1"
+
+
+@dataclass
+class ElevenLabsConfig:
+    api_key: str = ""
+    model: str = "eleven_monolingual_v1"
+
+
+@dataclass
 class TTSConfig:
     engine: str = "kokoro"
     voice: str = "af_heart"
@@ -44,6 +56,18 @@ class TTSConfig:
     language: str = "en-us"
     kokoro: KokoroConfig = field(default_factory=KokoroConfig)
     piper: PiperConfig = field(default_factory=PiperConfig)
+    openai_tts: OpenAITTSConfig = field(default_factory=OpenAITTSConfig)
+    elevenlabs: ElevenLabsConfig = field(default_factory=ElevenLabsConfig)
+
+
+@dataclass
+class LLMConfig:
+    enabled: bool = False
+    provider: str = "openai"      # "openai" | "anthropic" | "google"
+    api_key: str = ""             # use ${OPENAI_API_KEY} etc.
+    model: str = ""               # empty = provider default
+    target_language: str = ""     # empty = no translation
+    chunk_size: int = 8000        # chars per LLM call
 
 
 @dataclass
@@ -71,11 +95,18 @@ class DashboardConfig:
 
 
 @dataclass
+class NewsConfig:
+    max_stories_per_category: int = 5
+
+
+@dataclass
 class DianaConfig:
     tts: TTSConfig = field(default_factory=TTSConfig)
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
+    news: NewsConfig = field(default_factory=NewsConfig)
 
 
 def _build_dataclass(cls, data: dict):
@@ -110,6 +141,8 @@ def load_config(path: str | Path = "config.yaml") -> DianaConfig:
         processing=_build_dataclass(ProcessingConfig, raw.get("processing", {})),
         storage=_build_dataclass(StorageConfig, raw.get("storage", {})),
         dashboard=_build_dataclass(DashboardConfig, raw.get("dashboard", {})),
+        llm=_build_dataclass(LLMConfig, raw.get("llm", {})),
+        news=_build_dataclass(NewsConfig, raw.get("news", {})),
     )
 
 
@@ -139,6 +172,14 @@ def save_config(config: DianaConfig, path: str | Path = "config.yaml") -> None:
             "piper": {
                 "model_path": config.tts.piper.model_path,
             },
+            "openai_tts": {
+                "api_key": config.tts.openai_tts.api_key,
+                "model": config.tts.openai_tts.model,
+            },
+            "elevenlabs": {
+                "api_key": config.tts.elevenlabs.api_key,
+                "model": config.tts.elevenlabs.model,
+            },
         },
         "processing": {
             "chunk_max_chars": config.processing.chunk_max_chars,
@@ -157,6 +198,17 @@ def save_config(config: DianaConfig, path: str | Path = "config.yaml") -> None:
             "page_title": config.dashboard.page_title,
             "max_upload_mb": config.dashboard.max_upload_mb,
             "theme": config.dashboard.theme,
+        },
+        "llm": {
+            "enabled": config.llm.enabled,
+            "provider": config.llm.provider,
+            "api_key": config.llm.api_key,
+            "model": config.llm.model,
+            "target_language": config.llm.target_language,
+            "chunk_size": config.llm.chunk_size,
+        },
+        "news": {
+            "max_stories_per_category": config.news.max_stories_per_category,
         },
     }
     with open(path, "w", encoding="utf-8") as f:

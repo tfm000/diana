@@ -49,13 +49,15 @@ with col_img:
 
 with col_text:
     st.markdown("# *Diana*")
-    st.markdown("**Text-to-Speech Document Converter**")
+    st.markdown("**Text-to-Speech Converter**")
     st.markdown(
-        "Upload a PDF, EPUB, or TXT file and Diana will convert it "
-        "into a high-quality MP3 audiobook using local AI models."
+        "Convert documents, webpages, and news into high-quality MP3 audio "
+        "using local or cloud AI models."
     )
     st.markdown("---")
     st.page_link("pages/1_Upload.py", label="Upload a Document", icon="\U0001f4c4")
     st.page_link("pages/2_Library.py", label="View Library", icon="\U0001f4da")
-    st.page_link("pages/3_Settings.py", label="Settings", icon="\u2699\ufe0f")
+    st.page_link("pages/3_News.py", label="News — aggregate & summarise RSS sources", icon="\U0001f4f0")
+    st.page_link("pages/4_Web.py", label="Web — convert any URL to audio", icon="\U0001f310")
+    st.page_link("pages/5_Settings.py", label="Settings", icon="\u2699\ufe0f")
     st.caption(f"Version {__version__}")
