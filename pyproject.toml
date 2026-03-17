@@ -19,7 +19,7 @@ dependencies = [
     "soundfile>=0.12.0",
     "piper-tts>=1.0.0",
     "pydub>=0.25.1",
-    "pyaudioop>=0.0.1; python_version>='3.13'",
+    "audioop-lts>=0.2.1; python_version>='3.13'",
     "pyyaml>=6.0",
     "requests>=2.31.0",
     "openai>=1.30.0",
