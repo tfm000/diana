@@ -2,6 +2,7 @@
 
 import os
 import signal
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -73,6 +74,24 @@ audio::-webkit-media-controls-overflow-button {
 
 def setup_sidebar() -> None:
     """Add the Diana logo, header font, and terminate button to the sidebar."""
+    # If already terminated, show goodbye and stop
+    if st.session_state.get("terminated", False):
+        st.markdown(
+            """
+            <style>
+            [data-testid="stStatusWidget"], .stException,
+            div[data-testid="stConnectionStatus"] { display: none !important; }
+            </style>
+            <div style="text-align:center; padding:2rem;">
+                <h2>Session ended</h2>
+                <p>You may close this browser tab.</p>
+            </div>
+            <script>setTimeout(function(){ window.close(); }, 500);</script>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.stop()
+
     # Inject literary font for all text on every page
     st.markdown(_GLOBAL_FONT_CSS, unsafe_allow_html=True)
 
@@ -82,10 +101,26 @@ def setup_sidebar() -> None:
 
     st.sidebar.divider()
     if st.session_state.get("confirm_terminate", False):
-        st.sidebar.warning("This will stop Diana.")
+        st.sidebar.warning("This will end your time with Diana.")
         c1, c2 = st.sidebar.columns(2)
         with c1:
             if st.button("Confirm", key="terminate_yes"):
+                st.session_state["terminated"] = True
+                st.markdown(
+                    """
+                    <style>
+                    [data-testid="stStatusWidget"], .stException,
+                    div[data-testid="stConnectionStatus"] { display: none !important; }
+                    </style>
+                    <div style="text-align:center; padding:2rem;">
+                        <h2>Session ended</h2>
+                        <p>You may close this browser tab.</p>
+                    </div>
+                    <script>setTimeout(function(){ window.close(); }, 500);</script>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                time.sleep(1.5)
                 os.kill(os.getpid(), signal.SIGTERM)
         with c2:
             if st.button("Cancel", key="terminate_no"):

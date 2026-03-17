@@ -1,7 +1,6 @@
 import asyncio
 import io
 import logging
-import platform
 import shutil
 import subprocess
 import tempfile
@@ -31,15 +30,28 @@ class PiperEngine:
 
     def __init__(self, model_path: str):
         self._model_path = model_path
+        self._model_dir = str(Path(model_path).parent)
         self._piper_binary: str | None = None
         self._use_python_api = False
+        self._voice_cache: dict = {}  # voice_id → loaded PiperVoice
+
+    def _resolve_model_path(self, voice: str) -> str:
+        """Resolve a voice ID to a model file path.
+
+        Checks for a voice-specific model in the model directory first,
+        then falls back to the configured default model path.
+        """
+        voice_model = Path(self._model_dir) / f"{voice}.onnx"
+        if voice_model.exists():
+            return str(voice_model)
+        return self._model_path
 
     def initialize(self) -> None:
         model = Path(self._model_path)
         if not model.exists():
             raise FileNotFoundError(
                 f"Piper model not found at {model}. "
-                "Download a model from https://github.com/rhasspy/piper/releases"
+                "Download a model from https://huggingface.co/rhasspy/piper-voices"
             )
 
         # Try the Python package first
@@ -72,18 +84,27 @@ class PiperEngine:
         import piper as piper_mod
 
         loop = asyncio.get_event_loop()
+        model_path = self._resolve_model_path(voice)
 
         def _run():
-            tts = piper_mod.PiperVoice.load(self._model_path)
+            # Use cached voice model if available
+            if model_path not in self._voice_cache:
+                self._voice_cache[model_path] = piper_mod.PiperVoice.load(model_path)
+            tts = self._voice_cache[model_path]
+            syn_config = piper_mod.config.SynthesisConfig(
+                length_scale=1.0 / speed,
+            )
             buf = io.BytesIO()
             import wave
             with wave.open(buf, "wb") as wav:
-                tts.synthesize(text, wav, length_scale=1.0 / speed)
+                tts.synthesize_wav(text, wav, syn_config=syn_config)
             return buf.getvalue()
 
         return await loop.run_in_executor(None, _run)
 
     async def _synthesize_binary(self, text: str, voice: str, speed: float) -> bytes:
+        model_path = self._resolve_model_path(voice)
+
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             tmp_path = f.name
 
@@ -92,7 +113,7 @@ class PiperEngine:
         def _run():
             cmd = [
                 self._piper_binary,
-                "--model", self._model_path,
+                "--model", model_path,
                 "--output_file", tmp_path,
                 "--length-scale", str(1.0 / speed),
             ]
@@ -113,4 +134,4 @@ class PiperEngine:
         return list(self.VOICES)
 
     def shutdown(self) -> None:
-        pass
+        self._voice_cache.clear()

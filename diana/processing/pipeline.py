@@ -12,6 +12,7 @@ from diana.database import (
 from diana.models import JobStatus, parse_page_range
 from diana.parsers.registry import get_parser
 from diana.processing.chunker import chunk_text
+from diana.processing.cleaner import clean_text
 from diana.processing.merger import merge_chunks
 from diana.processing.synthesizer import synthesize_chunk
 from diana.tts.registry import create_engine
@@ -45,6 +46,9 @@ async def process_job(job_id: str, config: DianaConfig) -> None:
                 page_indices = parse_page_range(job.page_range, total)
 
         text = parser.extract_text(job.upload_path, page_indices=page_indices)
+
+        # Clean text for TTS compatibility (remove LaTeX, citations, etc.)
+        text = clean_text(text)
 
         if not text.strip():
             raise ValueError("No text could be extracted from the uploaded file")

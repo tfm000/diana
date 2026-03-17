@@ -1,4 +1,4 @@
-# Diana — Text-to-Speech Document Converter <!-- v0.2.0 -->
+# Diana — Text-to-Speech Document Converter <!-- v0.3.0 -->
 
 <table>
 <tr>
@@ -157,7 +157,7 @@ Click the **Terminate** button in the sidebar to stop the server.
 | Engine | License | Runs Locally | Quality |
 |--------|---------|-------------|---------|
 | **Kokoro** (default) | Apache 2.0 | Yes | High — natural-sounding |
-| **Piper** | MIT | Yes | Good — fast, lightweight |
+| **Piper** | GPL-3.0 | Yes | Good — fast, lightweight |
 
 ## Adding a New TTS Engine
 
@@ -218,7 +218,7 @@ diana/
 
 | Problem | Solution |
 |---------|----------|
-| `Piper model not found` | Download a Piper ONNX model from [piper releases](https://github.com/rhasspy/piper/releases) and place it at the path shown in Settings |
+| `Piper model not found` | Download a Piper ONNX model from [piper releases](https://huggingface.co/rhasspy/piper-voices) and place it at the path shown in Settings |
 | Upload size too small | Increase **Max upload size** in Settings, save, and restart |
 | Theme not applying | Theme changes require a restart — stop the app and run `python run.py` again |
 | `ffmpeg not found` | Install ffmpeg (see Prerequisites) and ensure it's on your PATH |
@@ -226,9 +226,22 @@ diana/
 
 ## License
 
-This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
+This project is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE) for details.
 
 ## Changelog
+
+### v0.3.0
+
+Text cleaning, Piper fixes, and license update.
+
+- **Text Cleaning:** Rule-based cleaning pipeline strips LaTeX, citations, URLs, and control characters before TTS — fixes "index out of bounds" crashes on academic documents
+- **Piper Fix:** Voice parameter now correctly resolves to voice-specific model files with caching
+- **Piper Fix:** Added `piper-tts` as a required dependency
+- **UX:** Graceful termination — no more "Connection error" overlay after shutdown
+- **UX:** Updated terminate confirmation message
+- **Infrastructure:** Updated Piper references from rhasspy/piper to OHF-Voice/piper1-gpl
+- **Infrastructure:** License changed from Apache 2.0 to GPL-3.0 (piper-tts compatibility)
+- **Infrastructure:** Tests for text cleaner and Piper engine
 
 ### v0.2.0
 
