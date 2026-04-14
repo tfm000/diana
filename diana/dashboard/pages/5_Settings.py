@@ -130,19 +130,28 @@ st.info(
 )
 
 llm_enabled = st.toggle("Enable LLM cleaning", value=config.llm.enabled)
+_llm_provider_options = ["openai", "anthropic", "anthropic-cli", "google"]
+_current_provider = config.llm.provider if config.llm.provider in _llm_provider_options else "openai"
 llm_provider = st.selectbox(
     "Provider",
-    ["openai", "anthropic", "google"],
-    index=["openai", "anthropic", "google"].index(config.llm.provider),
+    _llm_provider_options,
+    index=_llm_provider_options.index(_current_provider),
     disabled=not llm_enabled,
 )
-llm_api_key = st.text_input(
-    "API Key",
-    value=config.llm.api_key,
-    type="password",
-    placeholder="${OPENAI_API_KEY}",
-    disabled=not llm_enabled,
-)
+if llm_provider == "anthropic-cli":
+    st.info(
+        "Anthropic CLI uses your Claude Code login. Run `claude login` in a "
+        "terminal first — no API key needed. Uses your Pro/Max subscription."
+    )
+    llm_api_key = ""
+else:
+    llm_api_key = st.text_input(
+        "API Key",
+        value=config.llm.api_key,
+        type="password",
+        placeholder="${OPENAI_API_KEY}",
+        disabled=not llm_enabled,
+    )
 llm_model = st.text_input(
     "Model override (leave blank for default)",
     value=config.llm.model,
@@ -164,7 +173,7 @@ llm_max_concurrent = st.number_input(
 )
 
 _ENV_RE = __import__("re").compile(r"^\$\{[A-Z_][A-Z0-9_]*\}$")
-if llm_enabled and llm_api_key and not _ENV_RE.match(llm_api_key.strip()):
+if llm_enabled and llm_provider != "anthropic-cli" and llm_api_key and not _ENV_RE.match(llm_api_key.strip()):
     st.warning(
         "The API key will be stored in plaintext in config.yaml. "
         "Use `${YOUR_ENV_VAR}` to store a reference instead."

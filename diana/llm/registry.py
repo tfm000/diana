@@ -14,6 +14,8 @@ def get_llm_config(config: DianaConfig) -> LLMConfig | None:
     llm = config.llm
     if not llm.enabled:
         return None
+    if llm.provider == "anthropic-cli":
+        return llm
     if not llm.api_key or llm.api_key.startswith("${"):
         logger.warning(
             "LLM cleaning is enabled but the API key is missing or unresolved "

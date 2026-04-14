@@ -63,7 +63,7 @@ class TTSConfig:
 @dataclass
 class LLMConfig:
     enabled: bool = False
-    provider: str = "openai"      # "openai" | "anthropic" | "google"
+    provider: str = "openai"      # "openai" | "anthropic" | "anthropic-cli" | "google"
     api_key: str = ""             # use ${OPENAI_API_KEY} etc.
     model: str = ""               # empty = provider default
     target_language: str = ""     # empty = no translation

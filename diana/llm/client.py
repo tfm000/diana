@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 _PROVIDER_DEFAULTS = {
     "openai": "gpt-4o-mini",
     "anthropic": "claude-haiku-4-5-20251001",
+    "anthropic-cli": "claude-sonnet-4-5",
     "google": "gemini-2.0-flash",
 }
 
@@ -51,6 +52,47 @@ async def llm_complete(
         )
         return resp.content[0].text if resp.content else ""
 
+    elif provider == "anthropic-cli":
+        try:
+            from claude_agent_sdk import (
+                query,
+                ClaudeAgentOptions,
+                AssistantMessage,
+                TextBlock,
+                ResultMessage,
+            )
+        except ImportError as e:
+            raise RuntimeError(
+                "anthropic-cli provider requires 'claude-agent-sdk' "
+                "(pip install claude-agent-sdk) and the Claude Code CLI "
+                "installed with an active login (run `claude login`)."
+            ) from e
+
+        system = ""
+        turns: list[str] = []
+        for m in messages:
+            if m["role"] == "system":
+                system = m["content"]
+            else:
+                turns.append(f"{m['role']}: {m['content']}")
+        prompt = "\n\n".join(turns)
+
+        options = ClaudeAgentOptions(
+            system_prompt=system or None,
+            model=effective_model,
+        )
+        chunks: list[str] = []
+        async for msg in query(prompt=prompt, options=options):
+            if isinstance(msg, AssistantMessage):
+                for block in msg.content:
+                    if isinstance(block, TextBlock):
+                        chunks.append(block.text)
+            elif isinstance(msg, ResultMessage) and getattr(msg, "is_error", False):
+                raise RuntimeError(
+                    f"claude-agent-sdk error: {getattr(msg, 'result', 'unknown')}"
+                )
+        return "".join(chunks)
+
     elif provider == "google":
         import google.generativeai as genai
         genai.configure(api_key=api_key)
@@ -59,4 +101,7 @@ async def llm_complete(
         resp = await asyncio.to_thread(gm.generate_content, prompt)
         return resp.text or ""
 
-    raise ValueError(f"Unknown LLM provider: {provider!r}. Choose openai, anthropic, or google.")
+    raise ValueError(
+        f"Unknown LLM provider: {provider!r}. "
+        "Choose openai, anthropic, anthropic-cli, or google."
+    )

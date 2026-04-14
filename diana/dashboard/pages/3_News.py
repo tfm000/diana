@@ -587,7 +587,7 @@ for cat in ordered_cats:
         for story in by_category[cat]:
             story_key = f"{story.source_name}::{story.headline}"
             cols = st.columns([0.03, 0.97])
-            if cols[0].checkbox("", key=f"chk_{story_key}", label_visibility="collapsed"):
+            if cols[0].checkbox(f"Select story: {story.headline}", key=f"chk_{story_key}", label_visibility="collapsed"):
                 selected_story_keys.add(story_key)
             with cols[1]:
                 title = (

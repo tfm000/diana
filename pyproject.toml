@@ -24,15 +24,16 @@ dependencies = [
     "requests>=2.31.0",
     "openai>=1.30.0",
     "anthropic>=0.25.0",
+    "claude-agent-sdk>=0.1.59",
     "google-generativeai>=0.5.0",
 ]
 
 [project.optional-dependencies]
-llm = ["openai>=1.30.0", "anthropic>=0.25.0", "google-generativeai>=0.5.0"]
+llm = ["openai>=1.30.0", "anthropic>=0.25.0", "claude-agent-sdk>=0.1.59", "google-generativeai>=0.5.0"]
 cloud-tts = ["openai>=1.30.0"]
 news = ["requests>=2.31.0"]
-all = ["openai>=1.30.0", "anthropic>=0.25.0", "google-generativeai>=0.5.0", "requests>=2.31.0"]
-dev = ["pytest>=7.0"]
+all = ["openai>=1.30.0", "anthropic>=0.25.0", "claude-agent-sdk>=0.1.59", "google-generativeai>=0.5.0", "requests>=2.31.0"]
+dev = ["pytest>=7.0", "pytest-asyncio>=0.23.0"]
 
 [project.scripts]
 diana = "run:main"

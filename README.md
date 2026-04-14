@@ -25,7 +25,7 @@ Diana converts documents, webpages, and news into high-quality MP3 audio using l
 - Select specific pages or chapters to convert
 - Multiple TTS engines: **Kokoro**, **Piper** (local); **OpenAI TTS**, **ElevenLabs** (cloud, optional)
 - Choose voice and speed per job; preview voices before converting
-- Optional LLM text cleaning (OpenAI / Anthropic / Google Gemini) with translation support
+- Optional LLM text cleaning (OpenAI / Anthropic / Anthropic CLI / Google Gemini) with translation support
 - **News aggregator:** add sources with RSS feeds and groups, fetch and AI-summarise top stories per category, convert to audio; export/import source lists as JSON to share with others
 - **Web URL to Audio:** paste any URL and Diana scrapes, cleans, and converts it to an MP3 job
 - Track jobs and play/download audio in the Library
@@ -206,7 +206,7 @@ The **Settings** page lets you configure defaults that apply to new jobs and the
 | **Processing** | Max chunk size, output bitrate, silence gap between chunks |
 | **Dashboard** | Theme (dark / light / device auto-detect), max upload size (MB) |
 | **Model Paths** | Kokoro model + voices files, Piper model file |
-| **LLM Text Cleaning** | Provider (OpenAI / Anthropic / Google), API key, model override, translation target language |
+| **LLM Text Cleaning** | Provider (OpenAI / Anthropic / Anthropic CLI / Google), API key, model override, translation target language |
 | **OpenAI TTS** | API key, model (tts-1 / tts-1-hd) |
 | **ElevenLabs TTS** | API key, model ID |
 | **News** | Max stories per category returned by the AI |
@@ -242,9 +242,12 @@ Supported providers:
 |----------|--------------|----------------|
 | OpenAI | `gpt-4o-mini` | `OPENAI_API_KEY` |
 | Anthropic | `claude-haiku-4-5-20251001` | `ANTHROPIC_API_KEY` |
+| Anthropic CLI | `claude-sonnet-4-5` | None — uses Claude Code CLI login |
 | Google | `gemini-2.0-flash` | `GOOGLE_API_KEY` |
 
 For security, store API keys as environment variables and reference them in `config.yaml` as `${OPENAI_API_KEY}` rather than entering the raw key.
+
+**Anthropic CLI** lets users with a Claude Pro/Max subscription drive Diana's LLM features without a separate API key. It uses the [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk-python) under the hood and authenticates via your existing Claude Code CLI session. Prerequisites: install Node.js, then `npm install -g @anthropic-ai/claude-code` and run `claude login` once. Usage counts against your Pro/Max quota. Note: each call spawns the Claude Code CLI as a subprocess, so keep `max_concurrent_calls` low (1–2) for this provider.
 
 ## Adding a New TTS Engine
 
@@ -282,7 +285,7 @@ tts:
 
 llm:
   enabled: false
-  provider: openai        # openai | anthropic | google
+  provider: openai        # openai | anthropic | anthropic-cli | google
   api_key: "${OPENAI_API_KEY}"
   model: ""               # leave blank for provider default
   target_language: ""     # e.g. "English" to translate; blank = no translation
