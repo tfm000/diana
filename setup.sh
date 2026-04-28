@@ -23,7 +23,7 @@ echo "=== Diana Setup ==="
 echo ""
 
 PYTHON=""
-for cmd in python3 python; do
+for cmd in python3 python python3.10 python3.11 python3.12 python3.13; do
     if command -v "$cmd" &>/dev/null; then
         ver=$("$cmd" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || true)
         major=$("$cmd" -c "import sys; print(sys.version_info.major)" 2>/dev/null || echo 0)
