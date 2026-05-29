@@ -21,7 +21,7 @@
 Diana converts documents, webpages, and news into high-quality MP3 audio using local or cloud AI text-to-speech models. All core processing runs on your machine — cloud features are optional.
 
 **Features**
-- Upload PDF, EPUB, or TXT files and convert to MP3
+- Upload PDF, EPUB, TXT, or MD files and convert to MP3
 - Select specific pages or chapters to convert
 - Multiple TTS engines: **Kokoro**, **Piper** (local); **OpenAI TTS**, **ElevenLabs** (cloud, optional)
 - Choose voice and speed per job; preview voices before converting
@@ -152,7 +152,7 @@ The landing page displays Diana's artwork and quick links to all pages.
 
 Navigate to the **Upload** page to convert a document to audio.
 
-1. **Choose a file** — drag-and-drop or browse for a PDF, EPUB, or TXT file (up to the configured max upload size, default 1024 MB).
+1. **Choose a file** — drag-and-drop or browse for a PDF, EPUB, TXT, or MD file (up to the configured max upload size, default 1024 MB). Markdown formatting (headings, bold/italic, links, code fences, list bullets) is stripped before TTS so it isn't read aloud literally.
 2. **Select pages/chapters** — for PDFs and EPUBs, Diana shows the total page or chapter count and lets you specify which to convert. Enter ranges and individual numbers separated by commas (e.g. `1-3, 5, 10-15`). Leave empty to convert the entire document.
 3. **Configure TTS** — pick an engine, voice, and speed. These default to whatever is set in Settings but can be overridden per job.
 4. **Preview voice** — click **Preview Voice** to hear a short sample with your selected engine, voice, and speed before committing.
@@ -314,7 +314,7 @@ diana/
 │   ├── config.py           # Config loading and saving
 │   ├── models.py           # Job data model + page range parser
 │   ├── database.py         # SQLite job tracking and news storage
-│   ├── parsers/            # PDF, EPUB, TXT text extraction
+│   ├── parsers/            # PDF, EPUB, TXT, MD text extraction
 │   ├── tts/                # Swappable TTS engine layer
 │   │   ├── base.py         # TTSEngine protocol + TTSVoice
 │   │   ├── kokoro_engine.py

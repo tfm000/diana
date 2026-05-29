@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from diana.parsers.txt_parser import TXTParser
+from diana.parsers.md_parser import MDParser
 
 
 class TestTXTParser:
@@ -166,3 +167,68 @@ class TestEPUBParser:
         from diana.parsers.epub_parser import EPUBParser
 
         assert ".epub" in EPUBParser.supported_extensions
+
+
+class TestMDParser:
+    def test_strips_heading(self, tmp_path):
+        f = tmp_path / "h.md"
+        f.write_text("# Hello\n\nBody.", encoding="utf-8")
+        result = MDParser().extract_text(str(f))
+        assert "#" not in result
+        assert "Hello" in result
+        assert "Body." in result
+
+    def test_strips_bold_italic(self, tmp_path):
+        f = tmp_path / "fmt.md"
+        f.write_text("**bold** and *em*", encoding="utf-8")
+        result = MDParser().extract_text(str(f))
+        assert "*" not in result
+        assert "bold" in result
+        assert "em" in result
+
+    def test_strips_code_fence(self, tmp_path):
+        f = tmp_path / "code.md"
+        f.write_text("Intro.\n\n```\nx = 1\n```\n\nOutro.", encoding="utf-8")
+        result = MDParser().extract_text(str(f))
+        assert "```" not in result
+        assert "x = 1" in result
+        assert "Intro." in result
+        assert "Outro." in result
+
+    def test_strips_link(self, tmp_path):
+        f = tmp_path / "link.md"
+        f.write_text("See [the docs](https://example.com) please.", encoding="utf-8")
+        result = MDParser().extract_text(str(f))
+        assert "https://example.com" not in result
+        assert "the docs" in result
+
+    def test_utf8_bom(self, tmp_path):
+        f = tmp_path / "bom.md"
+        f.write_bytes(b"\xef\xbb\xbf# Heading")
+        result = MDParser().extract_text(str(f))
+        assert "Heading" in result
+        assert "﻿" not in result
+
+    def test_empty_file(self, tmp_path):
+        f = tmp_path / "empty.md"
+        f.write_text("", encoding="utf-8")
+        result = MDParser().extract_text(str(f))
+        assert result == ""
+
+    def test_page_indices_ignored(self, tmp_path):
+        f = tmp_path / "p.md"
+        f.write_text("content", encoding="utf-8")
+        result = MDParser().extract_text(str(f), page_indices=[0, 1])
+        assert "content" in result
+
+    def test_supported_extensions(self):
+        assert ".md" in MDParser.supported_extensions
+
+    def test_inline_emphasis_stays_in_sentence(self, tmp_path):
+        # Inline <strong>/<em> must not split a sentence across multiple
+        # short lines — otherwise the rule-based cleaner's chart-fragment
+        # heuristic eats the body of the sentence.
+        f = tmp_path / "inline.md"
+        f.write_text("I went to Paris in **April**. It was *amazing*.", encoding="utf-8")
+        result = MDParser().extract_text(str(f))
+        assert "I went to Paris in April. It was amazing." in result

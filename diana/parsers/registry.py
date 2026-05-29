@@ -3,11 +3,13 @@ from pathlib import Path
 from diana.parsers.pdf_parser import PDFParser
 from diana.parsers.epub_parser import EPUBParser
 from diana.parsers.txt_parser import TXTParser
+from diana.parsers.md_parser import MDParser
 
 _PARSERS = {
     ".pdf": PDFParser,
     ".epub": EPUBParser,
     ".txt": TXTParser,
+    ".md": MDParser,
 }
 
 

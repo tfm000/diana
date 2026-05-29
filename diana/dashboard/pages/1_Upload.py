@@ -24,8 +24,8 @@ setup_sidebar()
 st.markdown("## *Upload a Document*")
 
 uploaded_file = st.file_uploader(
-    "Choose a PDF, EPUB, or TXT file",
-    type=["pdf", "epub", "txt"],
+    "Choose a PDF, EPUB, TXT, or MD file",
+    type=["pdf", "epub", "txt", "md"],
     accept_multiple_files=False,
 )
 
