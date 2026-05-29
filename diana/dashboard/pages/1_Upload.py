@@ -40,9 +40,6 @@ with col1:
     engines = list_engines()
     saved = config.tts.engine
     if saved not in engines:
-        if not st.session_state.get("_engine_removed_notified"):
-            st.warning("OpenAI/ElevenLabs TTS were removed. Using Kokoro instead.")
-            st.session_state["_engine_removed_notified"] = True
         logger.warning("Saved TTS engine %r no longer available; falling back to kokoro", saved)
         saved = resolve_engine_name(saved)
     engine_name = st.selectbox("Engine", engines, index=engines.index(saved))

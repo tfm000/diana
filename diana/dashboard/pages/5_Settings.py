@@ -51,9 +51,6 @@ st.subheader("TTS Engine")
 _engines = list_engines()
 _saved_engine = config.tts.engine
 if _saved_engine not in _engines:
-    if not st.session_state.get("_engine_removed_notified"):
-        st.warning("OpenAI/ElevenLabs TTS were removed. Using Kokoro instead.")
-        st.session_state["_engine_removed_notified"] = True
     logger.warning("Saved TTS engine %r no longer available; falling back to kokoro", _saved_engine)
     _saved_engine = "kokoro"
 engine = st.selectbox(
