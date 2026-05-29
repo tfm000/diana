@@ -52,9 +52,12 @@ async def process_job(job_id: str, config: DianaConfig) -> None:
                     page_indices = parse_page_range(job.page_range, total)
             text = parser.extract_text(job.upload_path, page_indices=page_indices)
 
-        # Clean text for TTS compatibility
+        # Clean text for TTS compatibility (per-job choice; None = legacy global behaviour).
+        # PRIV-04 gate: the LLM path also requires a configured provider, so with no
+        # provider the decision is rule-based regardless of the stored toggle.
         llm_cfg = get_llm_config(config)
-        if llm_cfg is not None:
+        want_llm = job.use_llm if job.use_llm is not None else (llm_cfg is not None)
+        if want_llm and llm_cfg is not None:
             text = await llm_clean_text(text, llm_cfg)
         else:
             text = clean_text(text)

@@ -24,7 +24,7 @@ def _make_config():
     return config
 
 
-def _make_job(file_type="txt", page_range=""):
+def _make_job(file_type="txt", page_range="", use_llm=None):
     return Job(
         id="test-job-123",
         filename="test.txt",
@@ -34,6 +34,7 @@ def _make_job(file_type="txt", page_range=""):
         tts_engine="kokoro",
         tts_voice="af_heart",
         page_range=page_range,
+        use_llm=use_llm,
     )
 
 
@@ -146,6 +147,73 @@ class TestProcessJobHappyPath:
             asyncio.run(process_job("test-job-123", config))
 
             mock_scrape.assert_called_once_with(job.upload_path)
+
+
+class TestUseLlmDecisionMatrix:
+    """job.use_llm × get_llm_config decision matrix (mocked — no real LLM/TTS)."""
+
+    def _run(self, use_llm, llm_cfg):
+        """Run process_job through the clean branch and return (mock_clean, mock_llm_clean)."""
+        with (
+            _patch_pipeline("shutil"),
+            _patch_pipeline("Path"),
+            _patch_pipeline("merge_chunks"),
+            _patch_pipeline("synthesize_chunk", new_callable=AsyncMock) as mock_synth,
+            _patch_pipeline("create_engine") as mock_create_engine,
+            _patch_pipeline("clean_text") as mock_clean,
+            _patch_pipeline("llm_clean_text", new_callable=AsyncMock) as mock_llm_clean,
+            _patch_pipeline("get_llm_config", return_value=llm_cfg),
+            _patch_pipeline("chunk_text") as mock_chunk,
+            _patch_pipeline("get_parser") as mock_get_parser,
+            _patch_pipeline("update_job_status"),
+            _patch_pipeline("increment_completed_chunks"),
+            _patch_pipeline("get_job") as mock_get_job,
+        ):
+            mock_get_job.return_value = _make_job(use_llm=use_llm)
+
+            parser = MagicMock()
+            parser.extract_text.return_value = "Extracted text content."
+            mock_get_parser.return_value = parser
+
+            mock_clean.return_value = "Rule-based cleaned text."
+            mock_llm_clean.return_value = "LLM cleaned text."
+            mock_chunk.return_value = ["chunk1", "chunk2"]
+
+            engine = MagicMock()
+            engine.shutdown = MagicMock()
+            mock_create_engine.return_value = engine
+            mock_synth.return_value = "/tmp/chunks/test-job-123/0.wav"
+
+            asyncio.run(process_job("test-job-123", _make_config()))
+            return mock_clean, mock_llm_clean
+
+    def test_true_with_provider_uses_llm(self):
+        mock_clean, mock_llm_clean = self._run(use_llm=True, llm_cfg=MagicMock())
+        mock_llm_clean.assert_awaited_once()
+        mock_clean.assert_not_called()
+
+    def test_false_with_provider_uses_rule_based(self):
+        mock_clean, mock_llm_clean = self._run(use_llm=False, llm_cfg=MagicMock())
+        mock_clean.assert_called_once()
+        mock_llm_clean.assert_not_awaited()
+
+    def test_none_with_provider_legacy_uses_llm(self):
+        mock_clean, mock_llm_clean = self._run(use_llm=None, llm_cfg=MagicMock())
+        mock_llm_clean.assert_awaited_once()
+        mock_clean.assert_not_called()
+
+    def test_none_without_provider_uses_rule_based(self):
+        mock_clean, mock_llm_clean = self._run(use_llm=None, llm_cfg=None)
+        mock_clean.assert_called_once()
+        mock_llm_clean.assert_not_awaited()
+
+    def test_no_provider_forces_rule_based(self):
+        # PRIV-04 gate: toggle ON but NO provider -> rule-based, and the LLM path
+        # is never invoked (no network/LLM call attempted), regardless of the toggle.
+        mock_clean, mock_llm_clean = self._run(use_llm=True, llm_cfg=None)
+        mock_clean.assert_called_once()
+        mock_llm_clean.assert_not_awaited()
+        mock_llm_clean.assert_not_called()
 
 
 class TestProcessJobNotFound:
