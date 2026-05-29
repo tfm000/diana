@@ -39,18 +39,6 @@ class PiperConfig:
 
 
 @dataclass
-class OpenAITTSConfig:
-    api_key: str = ""
-    model: str = "tts-1"
-
-
-@dataclass
-class ElevenLabsConfig:
-    api_key: str = ""
-    model: str = "eleven_monolingual_v1"
-
-
-@dataclass
 class TTSConfig:
     engine: str = "kokoro"
     voice: str = "af_heart"
@@ -58,8 +46,6 @@ class TTSConfig:
     language: str = "en-us"
     kokoro: KokoroConfig = field(default_factory=KokoroConfig)
     piper: PiperConfig = field(default_factory=PiperConfig)
-    openai_tts: OpenAITTSConfig = field(default_factory=OpenAITTSConfig)
-    elevenlabs: ElevenLabsConfig = field(default_factory=ElevenLabsConfig)
 
 
 @dataclass
@@ -178,14 +164,6 @@ def save_config(config: DianaConfig, path: str | Path | None = None) -> None:
             },
             "piper": {
                 "model_path": config.tts.piper.model_path,
-            },
-            "openai_tts": {
-                "api_key": config.tts.openai_tts.api_key,
-                "model": config.tts.openai_tts.model,
-            },
-            "elevenlabs": {
-                "api_key": config.tts.elevenlabs.api_key,
-                "model": config.tts.elevenlabs.model,
             },
         },
         "processing": {
