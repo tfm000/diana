@@ -34,12 +34,16 @@ def _sync_config_toml() -> None:
 
 
 def main():
+    from diana import paths
+
     app_path = Path(__file__).parent / "diana" / "dashboard" / "Home.py"
 
     if not app_path.exists():
         print(f"Error: {app_path} not found")
         sys.exit(1)
 
+    # Create the per-user dir tree before the config is seeded/read.
+    paths.ensure_dirs()
     _sync_config_toml()
 
     cmd = [

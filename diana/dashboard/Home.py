@@ -1,10 +1,9 @@
 import logging
-from pathlib import Path
 
 import streamlit as st
 
-from diana import __version__
-from diana.config import get_config
+from diana import __version__, paths
+from diana.config import get_config, save_config
 from diana.dashboard.sidebar import get_icon_image, setup_sidebar, STATIC_DIR
 from diana.database import init_db
 from diana.processing import worker as _worker_module
@@ -23,10 +22,13 @@ st.set_page_config(
     layout="wide",
 )
 
-# Ensure data directories exist
-for d in (config.storage.upload_dir, config.storage.chunk_dir,
-          config.storage.output_dir, config.storage.model_dir):
-    Path(d).mkdir(parents=True, exist_ok=True)
+# Ensure the per-user data directory tree exists (DB, config, uploads,
+# chunks, output, models, voices) before anything reads or writes it.
+paths.ensure_dirs()
+
+# Seed the relocated config on first run so it exists in the per-user dir (D-02)
+if not paths.config_file().exists():
+    save_config(get_config())
 
 # Initialize database
 init_db(config.storage.database_path)
@@ -52,7 +54,7 @@ with col_text:
     st.markdown("**Text-to-Speech Converter**")
     st.markdown(
         "Convert documents, webpages, and news into high-quality MP3 audio "
-        "using local or cloud AI models."
+        "using local AI models."
     )
     st.markdown("---")
     st.page_link("pages/1_Upload.py", label="Upload a Document", icon="\U0001f4c4")
