@@ -6,6 +6,7 @@ PyMuPDF>=1.23.0
 EbookLib>=0.18
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
+markdown>=3.5
 
 # TTS engines
 kokoro-onnx>=0.4.0
@@ -19,10 +20,14 @@ audioop-lts>=0.2.1; python_version>="3.13"
 # Configuration
 pyyaml>=6.0
 
+# Platform paths
+platformdirs>=4.10.0
+
 # HTTP client (news scraping, ElevenLabs API)
 requests>=2.31.0
 
 # LLM providers (used for text cleaning and news summarization)
 openai>=1.30.0
 anthropic>=0.25.0
+claude-code-sdk>=0.0.10
 google-generativeai>=0.5.0

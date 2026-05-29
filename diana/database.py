@@ -216,8 +216,11 @@ def increment_completed_chunks(db_path: str, job_id: str) -> None:
     conn.close()
 
 
-def delete_job(db_path: str, job_id: str, chunk_base: str = "data/chunks") -> None:
+def delete_job(db_path: str, job_id: str, chunk_base: str | None = None) -> None:
     """Delete a job and clean up its associated files."""
+    if chunk_base is None:
+        from diana import paths
+        chunk_base = str(paths.chunk_dir())
     job = get_job(db_path, job_id)
     if job is None:
         return

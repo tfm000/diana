@@ -5,6 +5,8 @@ from pathlib import Path
 
 import yaml
 
+from diana import paths
+
 
 def _env_substitute(value: str) -> str:
     """Replace ${VAR} patterns with environment variable values."""
@@ -27,13 +29,13 @@ def _substitute_recursive(obj):
 
 @dataclass
 class KokoroConfig:
-    model_path: str = "data/models/kokoro-v1.0.onnx"
-    voices_path: str = "data/models/voices-v1.0.bin"
+    model_path: str = field(default_factory=lambda: str(paths.model_dir() / "kokoro-v1.0.onnx"))
+    voices_path: str = field(default_factory=lambda: str(paths.model_dir() / "voices-v1.0.bin"))
 
 
 @dataclass
 class PiperConfig:
-    model_path: str = "data/models/en_US-lessac-medium.onnx"
+    model_path: str = field(default_factory=lambda: str(paths.model_dir() / "en_US-lessac-medium.onnx"))
 
 
 @dataclass
@@ -81,11 +83,11 @@ class ProcessingConfig:
 
 @dataclass
 class StorageConfig:
-    upload_dir: str = "data/uploads"
-    chunk_dir: str = "data/chunks"
-    output_dir: str = "data/output"
-    model_dir: str = "data/models"
-    database_path: str = "data/diana.db"
+    upload_dir: str = field(default_factory=lambda: str(paths.upload_dir()))
+    chunk_dir: str = field(default_factory=lambda: str(paths.chunk_dir()))
+    output_dir: str = field(default_factory=lambda: str(paths.output_dir()))
+    model_dir: str = field(default_factory=lambda: str(paths.model_dir()))
+    database_path: str = field(default_factory=lambda: str(paths.db_path()))
 
 
 @dataclass
@@ -127,8 +129,10 @@ def _build_dataclass(cls, data: dict):
     return cls(**filtered)
 
 
-def load_config(path: str | Path = "config.yaml") -> DianaConfig:
+def load_config(path: str | Path | None = None) -> DianaConfig:
     """Load configuration from a YAML file, falling back to defaults."""
+    if path is None:
+        path = str(paths.config_file())
     path = Path(path)
     if path.exists():
         with open(path, "r", encoding="utf-8") as f:
@@ -150,7 +154,7 @@ def load_config(path: str | Path = "config.yaml") -> DianaConfig:
 _config: DianaConfig | None = None
 
 
-def get_config(path: str | Path = "config.yaml") -> DianaConfig:
+def get_config(path: str | Path | None = None) -> DianaConfig:
     """Get the singleton config instance."""
     global _config
     if _config is None:
@@ -158,8 +162,10 @@ def get_config(path: str | Path = "config.yaml") -> DianaConfig:
     return _config
 
 
-def save_config(config: DianaConfig, path: str | Path = "config.yaml") -> None:
+def save_config(config: DianaConfig, path: str | Path | None = None) -> None:
     """Save the current config back to YAML."""
+    if path is None:
+        path = str(paths.config_file())
     data = {
         "tts": {
             "engine": config.tts.engine,
