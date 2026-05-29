@@ -8,7 +8,8 @@ import streamlit as st
 
 from diana.config import get_config
 from diana.dashboard.sidebar import get_icon_image, setup_sidebar
-from diana.database import create_job, init_db
+from diana.database import create_job, get_setting, init_db, set_setting
+from diana.llm.registry import get_llm_config
 from diana.models import Job, JobStatus, parse_page_range
 from diana.tts.registry import create_engine, get_engine_voices, list_engines, resolve_engine_name
 
@@ -60,6 +61,25 @@ with col2:
 
 with col3:
     speed = st.slider("Speed", min_value=0.5, max_value=2.0, value=config.tts.speed, step=0.1)
+
+# Per-job LLM cleaning toggle — privacy-first (default OFF), provider-gated, and durable
+# across restarts via the app_settings store (key "upload.use_llm"). The Upload page
+# remembers its own choice independently of other pages (D-06/D-07/D-08/D-10).
+llm_available = get_llm_config(config) is not None
+remembered = get_setting(config.storage.database_path, "upload.use_llm", "0") == "1"
+use_llm = st.toggle(
+    "Clean with AI (LLM)",
+    value=remembered and llm_available,
+    disabled=not llm_available,
+    help=(
+        "Sends the document text to your configured LLM provider to clean it before "
+        "narration. Off = on-device rule-based cleaning, so nothing leaves your machine."
+        if llm_available
+        else "Disabled — configure an LLM provider in Settings to enable AI cleaning."
+    ),
+)
+if llm_available and use_llm != remembered:
+    set_setting(config.storage.database_path, "upload.use_llm", "1" if use_llm else "0")
 
 # Reset job_submitted when engine or voice changes so user can re-submit the same file
 _curr_combo = f"{engine_name}:{selected_voice_id}"
@@ -191,6 +211,7 @@ if uploaded_file is not None:
             tts_engine=engine_name,
             tts_voice=selected_voice_id,
             page_range=page_range_spec if page_range_spec.strip() else None,
+            use_llm=use_llm,
         )
         create_job(config.storage.database_path, job)
 
