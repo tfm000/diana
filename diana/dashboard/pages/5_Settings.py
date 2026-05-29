@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import streamlit as st
@@ -6,6 +7,8 @@ from diana.config import get_config, save_config
 from diana.dashboard.sidebar import get_icon_image, setup_sidebar
 from diana.tts.registry import get_engine_voices, list_engines
 from diana.utils import detect_device_theme
+
+logger = logging.getLogger(__name__)
 
 
 def _sync_streamlit_config(max_upload_mb: int, theme: str = "device") -> None:
@@ -45,10 +48,18 @@ st.markdown("## *Settings*")
 
 st.subheader("TTS Engine")
 
+_engines = list_engines()
+_saved_engine = config.tts.engine
+if _saved_engine not in _engines:
+    if not st.session_state.get("_engine_removed_notified"):
+        st.warning("OpenAI/ElevenLabs TTS were removed. Using Kokoro instead.")
+        st.session_state["_engine_removed_notified"] = True
+    logger.warning("Saved TTS engine %r no longer available; falling back to kokoro", _saved_engine)
+    _saved_engine = "kokoro"
 engine = st.selectbox(
     "Default Engine",
-    list_engines(),
-    index=list_engines().index(config.tts.engine),
+    _engines,
+    index=_engines.index(_saved_engine),
 )
 
 # Voice dropdown populated from the selected engine
@@ -180,54 +191,6 @@ if llm_enabled and llm_provider != "anthropic-cli" and llm_api_key and not _ENV_
     )
 
 # ---------------------------------------------------------------------------
-# OpenAI TTS (optional)
-# ---------------------------------------------------------------------------
-st.divider()
-st.subheader("OpenAI TTS (Optional)")
-st.info(
-    "Use OpenAI's cloud TTS for higher quality audio. "
-    "Select **openai_tts** as the engine in Upload to use this."
-)
-openai_tts_key = st.text_input(
-    "OpenAI API Key",
-    value=config.tts.openai_tts.api_key,
-    type="password",
-    placeholder="${OPENAI_API_KEY}",
-    key="openai_tts_key_input",
-)
-openai_tts_model = st.selectbox(
-    "Model",
-    ["tts-1", "tts-1-hd"],
-    index=0 if config.tts.openai_tts.model == "tts-1" else 1,
-)
-if openai_tts_key and not _ENV_RE.match(openai_tts_key.strip()):
-    st.warning("API key will be stored in plaintext. Use `${OPENAI_API_KEY}` instead.")
-
-# ---------------------------------------------------------------------------
-# ElevenLabs TTS (optional)
-# ---------------------------------------------------------------------------
-st.divider()
-st.subheader("ElevenLabs TTS (Optional)")
-st.info(
-    "Use ElevenLabs for premium voice quality. "
-    "Select **elevenlabs** as the engine in Upload to use this."
-)
-elevenlabs_key = st.text_input(
-    "ElevenLabs API Key",
-    value=config.tts.elevenlabs.api_key,
-    type="password",
-    placeholder="${ELEVENLABS_API_KEY}",
-    key="elevenlabs_key_input",
-)
-elevenlabs_model = st.text_input(
-    "Model ID",
-    value=config.tts.elevenlabs.model,
-    placeholder="eleven_monolingual_v1",
-)
-if elevenlabs_key and not _ENV_RE.match(elevenlabs_key.strip()):
-    st.warning("API key will be stored in plaintext. Use `${ELEVENLABS_API_KEY}` instead.")
-
-# ---------------------------------------------------------------------------
 # News
 # ---------------------------------------------------------------------------
 st.divider()
@@ -266,10 +229,6 @@ if st.button("Save Settings", type="primary"):
     config.tts.kokoro.model_path = kokoro_model
     config.tts.kokoro.voices_path = kokoro_voices
     config.tts.piper.model_path = piper_model
-    config.tts.openai_tts.api_key = openai_tts_key
-    config.tts.openai_tts.model = openai_tts_model
-    config.tts.elevenlabs.api_key = elevenlabs_key
-    config.tts.elevenlabs.model = elevenlabs_model or "eleven_monolingual_v1"
     config.llm.enabled = llm_enabled
     config.llm.provider = llm_provider
     config.llm.api_key = llm_api_key

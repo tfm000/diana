@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -9,7 +10,9 @@ from diana.config import get_config
 from diana.dashboard.sidebar import get_icon_image, setup_sidebar
 from diana.database import create_job, init_db
 from diana.models import Job, JobStatus, parse_page_range
-from diana.tts.registry import create_engine, get_engine_voices, list_engines
+from diana.tts.registry import create_engine, get_engine_voices, list_engines, resolve_engine_name
+
+logger = logging.getLogger(__name__)
 
 st.set_page_config(
     page_title="Diana's Upload",
@@ -34,7 +37,15 @@ st.subheader("TTS Settings")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    engine_name = st.selectbox("Engine", list_engines(), index=list_engines().index(config.tts.engine))
+    engines = list_engines()
+    saved = config.tts.engine
+    if saved not in engines:
+        if not st.session_state.get("_engine_removed_notified"):
+            st.warning("OpenAI/ElevenLabs TTS were removed. Using Kokoro instead.")
+            st.session_state["_engine_removed_notified"] = True
+        logger.warning("Saved TTS engine %r no longer available; falling back to kokoro", saved)
+        saved = resolve_engine_name(saved)
+    engine_name = st.selectbox("Engine", engines, index=engines.index(saved))
 
 with col2:
     voices = get_engine_voices(engine_name, config=config)
@@ -68,8 +79,8 @@ preview_text = st.text_area(
     help="Type custom text to hear how the selected voice sounds.",
 )
 
-_API_ENGINES = {"openai_tts", "elevenlabs"}
-_audio_fmt = "audio/mp3" if engine_name in _API_ENGINES else "audio/wav"
+# kokoro and piper both output WAV (the only remaining engines)
+_audio_fmt = "audio/wav"
 
 if st.button("Preview Voice"):
     if not preview_text.strip():
