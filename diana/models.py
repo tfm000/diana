@@ -65,6 +65,7 @@ class Job:
     error_message: Optional[str] = None
     created_at: datetime = None
     updated_at: datetime = None
+    use_llm: Optional[bool] = None
 
     def __post_init__(self):
         now = datetime.now()
@@ -80,6 +81,8 @@ class Job:
             self.updated_at = datetime.fromisoformat(self.updated_at)
         if self.folder is None:
             self.folder = ""
+        if isinstance(self.use_llm, int):
+            self.use_llm = bool(self.use_llm)
 
     @property
     def progress(self) -> float:

@@ -38,6 +38,11 @@ def init_db(db_path: str) -> None:
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
         CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at);
 
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS news_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -80,6 +85,7 @@ def init_db(db_path: str) -> None:
     for migration in [
         "ALTER TABLE jobs ADD COLUMN page_range TEXT",
         "ALTER TABLE jobs ADD COLUMN folder TEXT DEFAULT ''",
+        "ALTER TABLE jobs ADD COLUMN use_llm INTEGER",  # NULL=unset, 1/0=explicit per-job choice
         "ALTER TABLE news_sources ADD COLUMN rss_url TEXT DEFAULT ''",
         "ALTER TABLE news_sources ADD COLUMN source_group TEXT DEFAULT ''",
     ]:
@@ -139,20 +145,43 @@ def _row_to_job(row: sqlite3.Row) -> Job:
     return Job(**dict(row))
 
 
+def get_setting(db_path: str, key: str, default: Optional[str] = None) -> Optional[str]:
+    """Return the stored value for key, or default if the key is absent."""
+    conn = _get_connection(db_path)
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = ?", (key,)
+    ).fetchone()
+    conn.close()
+    return row["value"] if row else default
+
+
+def set_setting(db_path: str, key: str, value: str) -> None:
+    """Upsert a durable key-value setting (survives across connections/restarts)."""
+    conn = _get_connection(db_path)
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    conn.commit()
+    conn.close()
+
+
 def create_job(db_path: str, job: Job) -> Job:
     conn = _get_connection(db_path)
     conn.execute(
         """INSERT INTO jobs
            (id, filename, file_type, upload_path, status, tts_engine, tts_voice,
             page_range, folder, output_path, total_chunks, completed_chunks,
-            error_message, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            error_message, created_at, updated_at, use_llm)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             job.id, job.filename, job.file_type, job.upload_path,
             job.status.value, job.tts_engine, job.tts_voice,
             job.page_range, job.folder, job.output_path, job.total_chunks,
             job.completed_chunks, job.error_message,
             job.created_at.isoformat(), job.updated_at.isoformat(),
+            int(job.use_llm) if job.use_llm is not None else None,
         ),
     )
     conn.commit()

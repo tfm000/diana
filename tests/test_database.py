@@ -7,12 +7,14 @@ from diana.database import (
     delete_job,
     get_job,
     get_next_pending_job,
+    get_setting,
     increment_completed_chunks,
     init_db,
     list_folders,
     list_jobs,
     move_job_to_folder,
     rename_job,
+    set_setting,
     update_job_status,
 )
 from diana.models import Job, JobStatus
@@ -61,6 +63,42 @@ class TestCreateAndGetJob:
 
     def test_get_nonexistent(self, db_path):
         assert get_job(db_path, "nope") is None
+
+
+class TestUseLlmRoundTrip:
+    def test_true_round_trips(self, db_path):
+        create_job(db_path, _make_job(use_llm=True))
+        assert get_job(db_path, "job1").use_llm is True
+
+    def test_false_round_trips(self, db_path):
+        create_job(db_path, _make_job(use_llm=False))
+        assert get_job(db_path, "job1").use_llm is False
+
+    def test_omitted_is_none(self, db_path):
+        create_job(db_path, _make_job())
+        assert get_job(db_path, "job1").use_llm is None
+
+
+class TestAppSettings:
+    def test_set_get_round_trip(self, db_path):
+        set_setting(db_path, "upload.use_llm", "1")
+        assert get_setting(db_path, "upload.use_llm") == "1"
+
+    def test_upsert_overwrites(self, db_path):
+        set_setting(db_path, "upload.use_llm", "1")
+        set_setting(db_path, "upload.use_llm", "0")  # second write upserts, no duplicate-key error
+        assert get_setting(db_path, "upload.use_llm") == "0"
+
+    def test_default_when_absent(self, db_path):
+        assert get_setting(db_path, "missing.key", "0") == "0"
+        assert get_setting(db_path, "missing.key") is None
+
+    def test_survives_fresh_connection(self, db_path):
+        # PRIV-03 durability property at the data layer: a value written by one
+        # connection (closed inside set_setting) is still readable by a brand-new
+        # connection opened inside a later get_setting call.
+        set_setting(db_path, "upload.use_llm", "1")
+        assert get_setting(db_path, "upload.use_llm", "0") == "1"
 
 
 class TestListJobs:
