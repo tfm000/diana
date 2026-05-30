@@ -131,6 +131,9 @@ piper_model = st.text_input(
 # ---------------------------------------------------------------------------
 st.divider()
 st.subheader("LLM Text Cleaning (Optional)")
+# Reserve a slot for the active/inactive status — populated after the widgets
+# below so it can reflect live form state on each rerun.
+_llm_status_slot = st.empty()
 st.info(
     "For security, enter your API key as an environment variable reference like "
     "`${OPENAI_API_KEY}` and set the actual key in your shell. "
@@ -187,28 +190,29 @@ if llm_enabled and llm_provider != "anthropic-cli" and llm_api_key and not _ENV_
         "Use `${YOUR_ENV_VAR}` to store a reference instead."
     )
 
-# Live status mirroring diana.llm.registry.get_llm_config — keeps Settings
-# honest about whether Upload/News will actually see a usable provider.
+# Populate the top-of-section status slot. Mirrors diana.llm.registry.get_llm_config
+# so Settings agrees with what Upload/News see.
 _key_typed = (llm_api_key or "").strip()
 _key_unresolved = _key_typed.startswith("${")
-if not llm_enabled:
-    st.caption("LLM cleaning is disabled — text cleaning runs on-device (rule-based).")
-elif llm_provider == "anthropic-cli":
-    st.success(
-        "Active: anthropic-cli (uses your local Claude Code login; no API key required)."
-    )
-elif not _key_typed:
-    st.warning(
-        "Not active: no API key set — cleaning falls back to rule-based (on-device). "
-        "Nothing leaves your machine."
-    )
-elif _key_unresolved:
-    st.warning(
-        f"Not active: API key reference `{llm_api_key}` is unresolved (env var not set) "
-        "— cleaning falls back to rule-based (on-device). Nothing leaves your machine."
-    )
-else:
-    st.success(f"Active: {llm_provider} with API key configured.")
+with _llm_status_slot.container():
+    if not llm_enabled:
+        st.caption("LLM cleaning is disabled — text cleaning runs on-device (rule-based).")
+    elif llm_provider == "anthropic-cli":
+        st.success(
+            "Active: anthropic-cli (uses your local Claude Code login; no API key required)."
+        )
+    elif not _key_typed:
+        st.warning(
+            "Not active: no API key set — cleaning falls back to rule-based (on-device). "
+            "Nothing leaves your machine."
+        )
+    elif _key_unresolved:
+        st.warning(
+            f"Not active: API key reference `{llm_api_key}` is unresolved (env var not set) "
+            "— cleaning falls back to rule-based (on-device). Nothing leaves your machine."
+        )
+    else:
+        st.success(f"Active: {llm_provider} with API key configured.")
 
 # ---------------------------------------------------------------------------
 # News
