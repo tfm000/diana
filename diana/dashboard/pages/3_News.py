@@ -3,6 +3,7 @@ import json
 import sqlite3
 import uuid
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlparse
 
 import streamlit as st
@@ -16,6 +17,7 @@ from diana.database import (
     clear_news_feeds,
     clear_source_groups,
     create_job,
+    get_setting,
     init_db,
     list_news_groups,
     list_news_sources,
@@ -24,13 +26,19 @@ from diana.database import (
     remove_news_source,
     remove_source_from_group,
     save_news_stories,
+    set_setting,
     update_news_source,
 )
 from diana.llm.registry import get_llm_config
 from diana.models import Job, JobStatus
 from diana.news.scraper import ScraperError, all_articles_stale, scrape_source
-from diana.news.summarizer import Story, SummarizationError, summarize_all_sources
-from diana.tts.registry import get_engine_voices, list_engines
+from diana.news.summarizer import (
+    Story,
+    SummarizationError,
+    build_digest_text,
+    summarize_all_sources,
+)
+from diana.tts.registry import get_engine_voices, list_engines, resolve_engine_name
 
 st.set_page_config(
     page_title="Diana's News",
@@ -466,96 +474,201 @@ all_sources = list_news_sources(db_path)
 if not all_sources:
     st.stop()
 
-if llm_cfg is None:
-    st.info(
-        "Configure an LLM in **Settings → LLM Text Cleaning** to enable "
-        "the 'Get Latest Stories' feature.",
-        icon="ℹ️",
+# Per-job News LLM toggle — privacy-first (default OFF; D-06), provider-gated
+# (D-08), durable across restarts via the app_settings store under the distinct
+# key "news.use_llm" so it stays independent of Upload's choice (D-07). UI-only,
+# no config.yaml edits required (D-10).
+llm_available = llm_cfg is not None
+remembered_news = get_setting(db_path, "news.use_llm", "0") == "1"
+use_llm = st.toggle(
+    "Clean with AI (LLM)",
+    value=remembered_news and llm_available,
+    disabled=not llm_available,
+    help=(
+        "On — summarise & categorise stories with your configured LLM provider. "
+        "Off — concatenate cleaned article text into a single offline digest; "
+        "nothing leaves your machine."
+        if llm_available
+        else "Disabled — configure an LLM provider in Settings to enable AI cleaning."
+    ),
+    key="news_use_llm_toggle",
+)
+if llm_available and use_llm != remembered_news:
+    set_setting(db_path, "news.use_llm", "1" if use_llm else "0")
+
+
+def _scrape_active_sources(progress_widget):
+    """Run the shared scrape ladder over all sources. Returns (all_scraped, scrape_errors)."""
+    all_scraped: list[dict] = []
+    scrape_errors: list[str] = []
+    archive_blocked = False  # stop trying archive.ph after a 429
+    total_sources = len(all_sources)
+
+    for i, src in enumerate(all_sources):
+        name = src["name"]
+        homepage = src.get("url", "") or ""
+        feed_urls = [f["rss_url"] for f in src["feeds"] if f.get("rss_url")]
+
+        # Order: RSS feeds → homepage → archive.ph (last resort)
+        urls_to_try: list[str] = [*feed_urls]
+        if homepage:
+            urls_to_try.append(homepage)
+        if homepage and not archive_blocked:
+            urls_to_try.append(f"https://archive.ph/newest/{homepage}")
+
+        if not urls_to_try:
+            scrape_errors.append(
+                f"**{name}**: no URL configured. Use Edit to add an RSS feed or homepage URL."
+            )
+            continue
+
+        progress_widget.progress(
+            (i + 0.5) / (total_sources + 1), text=f"Scraping {name}…"
+        )
+
+        scraped_articles = None
+        last_err = ""
+        for fetch_url in urls_to_try:
+            try:
+                articles, _ = scrape_source(fetch_url)
+                if not articles:
+                    last_err = "no articles found"
+                    continue
+                if all_articles_stale(articles):
+                    last_err = "all articles are older than 3 days — trying next source"
+                    continue
+                scraped_articles = articles
+                break
+            except ScraperError as exc:
+                last_err = str(exc)
+                # If archive.ph rate-limits us, stop trying it for remaining sources
+                if "archive.ph" in fetch_url and "429" in str(exc):
+                    archive_blocked = True
+                    last_err = "archive.ph rate-limited — try adding an RSS feed via Edit"
+
+        if scraped_articles is not None:
+            all_scraped.append({"name": name, "url": homepage, "articles": scraped_articles})
+        else:
+            scrape_errors.append(f"**{name}**: {last_err}")
+
+    return all_scraped, scrape_errors
+
+
+# Branch the fetch UI on the toggle so the two flows are visually distinct and
+# the OFF path is reachable even when no LLM provider is configured (D-09).
+if use_llm:
+    if llm_cfg is None:
+        st.info(
+            "Configure an LLM in **Settings → LLM Text Cleaning** to enable "
+            "the 'Get Latest Stories' feature.",
+            icon="ℹ️",
+        )
+
+    if st.button("Get Latest Stories", type="primary", disabled=llm_cfg is None):
+        total = len(all_sources)
+        progress = st.progress(0, text="Fetching stories…")
+
+        all_scraped, scrape_errors = _scrape_active_sources(progress)
+
+        fetched_stories: list[Story] = []
+        if all_scraped:
+            progress.progress(float(total) / (total + 1), text="Summarising with AI…")
+            try:
+                fetched_stories = asyncio.run(
+                    summarize_all_sources(
+                        all_scraped, llm_cfg,
+                        max_per_category=config.news.max_stories_per_category,
+                    )
+                )
+            except SummarizationError as exc:
+                fetched_stories = []
+                st.error(f"Summarisation failed: {exc}")
+
+        progress.empty()
+
+        if fetched_stories:
+            fetched_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+            st.session_state["news_results"] = fetched_stories
+            st.session_state["news_fetched_at"] = fetched_at
+            story_dicts = [
+                {
+                    "headline": s.headline, "summary": s.summary, "category": s.category,
+                    "importance": s.importance, "url": s.url, "source_name": s.source_name,
+                }
+                for s in fetched_stories
+            ]
+            save_news_stories(db_path, story_dicts, fetched_at)
+        st.session_state["news_fetch_errors"] = scrape_errors
+
+else:
+    # LLM-OFF digest path (D-09): scrape -> build_digest_text -> ONE txt job with
+    # use_llm=False. NO summarize_all_sources, NO categorized display, NO spoken
+    # titles. merge_chunks(gap_ms=...) silence becomes the spoken inter-article
+    # pause. Enabled even when no LLM provider is configured.
+    st.caption(
+        "AI cleaning is **off** — the digest concatenates cleaned article text "
+        "from all your active sources into a single offline MP3 (no titles, no "
+        "summaries, no categories). Nothing leaves your machine."
     )
 
-if st.button("Get Latest Stories", type="primary", disabled=llm_cfg is None):
-    scrape_errors: list[str] = []
-    total = len(all_sources)
-    progress = st.progress(0, text="Fetching stories…")
+    if st.button("Build News Digest", type="primary", key="news_digest_btn"):
+        total = len(all_sources)
+        progress = st.progress(0, text="Fetching articles…")
 
-    async def _fetch_all():
-        all_scraped: list[dict] = []
-        archive_blocked = False  # stop trying archive.ph after a 429
-
-        for i, src in enumerate(all_sources):
-            name = src["name"]
-            homepage = src.get("url", "") or ""
-            feed_urls = [f["rss_url"] for f in src["feeds"] if f.get("rss_url")]
-
-            # Order: RSS feeds → homepage → archive.ph (last resort)
-            urls_to_try: list[str] = [*feed_urls]
-            if homepage:
-                urls_to_try.append(homepage)
-            if homepage and not archive_blocked:
-                urls_to_try.append(f"https://archive.ph/newest/{homepage}")
-
-            if not urls_to_try:
-                scrape_errors.append(f"**{name}**: no URL configured. Use Edit to add an RSS feed or homepage URL.")
-                continue
-
-            progress.progress((i + 0.5) / (total + 1), text=f"Scraping {name}…")
-
-            scraped_articles = None
-            last_err = ""
-            for fetch_url in urls_to_try:
-                try:
-                    articles, _ = scrape_source(fetch_url)
-                    if not articles:
-                        last_err = "no articles found"
-                        continue
-                    if all_articles_stale(articles):
-                        last_err = "all articles are older than 3 days — trying next source"
-                        continue
-                    scraped_articles = articles
-                    break
-                except ScraperError as exc:
-                    last_err = str(exc)
-                    # If archive.ph rate-limits us, stop trying it for remaining sources
-                    if "archive.ph" in fetch_url and "429" in str(exc):
-                        archive_blocked = True
-                        last_err = "archive.ph rate-limited — try adding an RSS feed via Edit"
-
-            if scraped_articles is not None:
-                all_scraped.append({"name": name, "url": homepage, "articles": scraped_articles})
-            else:
-                scrape_errors.append(f"**{name}**: {last_err}")
+        all_scraped, scrape_errors = _scrape_active_sources(progress)
+        progress.empty()
 
         if not all_scraped:
-            return []
+            st.warning(
+                "No articles could be fetched from your sources. See warnings below."
+            )
+        else:
+            digest_text = build_digest_text(all_scraped)
+            if not digest_text.strip():
+                st.warning(
+                    "Fetched articles produced no speakable text after cleaning."
+                )
+            else:
+                import tempfile
 
-        progress.progress(float(total) / (total + 1), text="Summarising with AI…")
-        stories = await summarize_all_sources(
-            all_scraped, llm_cfg,
-            max_per_category=config.news.max_stories_per_category,
-        )
-        return stories
+                Path(config.storage.upload_dir).mkdir(parents=True, exist_ok=True)
+                tmp = tempfile.NamedTemporaryFile(
+                    suffix=".txt", delete=False, dir=config.storage.upload_dir,
+                )
+                tmp.write(digest_text.encode("utf-8"))
+                tmp.close()
 
-    try:
-        fetched_stories: list[Story] = asyncio.run(_fetch_all())
-    except SummarizationError as exc:
-        fetched_stories = []
-        st.error(f"Summarisation failed: {exc}")
+                fetched_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+                job_id = str(uuid.uuid4())
+                filename = (
+                    f"NewsDigest_{fetched_at.replace(':', '-').replace(' ', '_')}.txt"
+                )
+                # Default engine/voice picked from config so the digest job runs
+                # without forcing the user to open the categorized convert panel.
+                # resolve_engine_name guards against a stale saved engine (e.g.
+                # legacy "elevenlabs" / "openai_tts" from a config last edited
+                # before 01-02 retired the cloud engines) — silent kokoro
+                # fallback matches the 01-02 D-05 decision.
+                digest_engine = resolve_engine_name(config.tts.engine)
+                digest_voice = config.tts.voice
+                digest_voices = get_engine_voices(digest_engine, config=config)
+                if digest_voices and not any(v.id == digest_voice for v in digest_voices):
+                    digest_voice = digest_voices[0].id
+                job = Job(
+                    id=job_id, filename=filename, file_type="txt",
+                    upload_path=tmp.name, status=JobStatus.PENDING,
+                    tts_engine=digest_engine, tts_voice=digest_voice,
+                    use_llm=False,
+                )
+                create_job(db_path, job)
+                st.success(
+                    f"Digest job created for **{filename}** "
+                    f"({len(all_scraped)} source"
+                    f"{'s' if len(all_scraped) != 1 else ''})."
+                )
+                st.page_link("pages/2_Library.py", label="Go to Library", icon="📚")
 
-    progress.empty()
-
-    if fetched_stories:
-        fetched_at = datetime.now().strftime("%Y-%m-%d %H:%M")
-        st.session_state["news_results"] = fetched_stories
-        st.session_state["news_fetched_at"] = fetched_at
-        story_dicts = [
-            {
-                "headline": s.headline, "summary": s.summary, "category": s.category,
-                "importance": s.importance, "url": s.url, "source_name": s.source_name,
-            }
-            for s in fetched_stories
-        ]
-        save_news_stories(db_path, story_dicts, fetched_at)
-    st.session_state["news_fetch_errors"] = scrape_errors
+        st.session_state["news_fetch_errors"] = scrape_errors
 
 # ---------------------------------------------------------------------------
 # Display stories
