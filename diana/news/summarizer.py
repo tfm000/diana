@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from diana.config import LLMConfig
 from diana.llm.client import llm_complete
 from diana.news.scraper import RawArticle, format_articles_for_llm
+from diana.processing.cleaner import clean_text
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,29 @@ class Story:
     importance: int
     url: str
     source_name: str
+
+
+def build_digest_text(sources_data: list[dict]) -> str:
+    """Concatenate cleaned article prose from all sources into one digest (no titles/categories).
+
+    sources_data: list of {"name": str, "url": str, "articles": list[RawArticle]} —
+    the shape produced by the News page's scrape-all loop. For each article, the
+    body is `clean_text(article.excerpt or article.headline)`; empty/whitespace
+    bodies are skipped. Results are joined with a blank line (`"\\n\\n"`) — the
+    pipeline's merge_chunks silence-gap becomes the spoken inter-article pause.
+    No headlines, no "Source:" lines, no category labels (D-09).
+    """
+    parts: list[str] = []
+    for src in sources_data:
+        for article in src.get("articles", []):
+            # Whitespace-only excerpts fall back to the headline so a stub article
+            # with `excerpt="   "` still produces speakable prose.
+            raw = article.excerpt if (article.excerpt and article.excerpt.strip()) else article.headline
+            body = clean_text(raw).strip()
+            if not body:
+                continue
+            parts.append(body)
+    return "\n\n".join(parts)
 
 
 async def summarize_all_sources(
