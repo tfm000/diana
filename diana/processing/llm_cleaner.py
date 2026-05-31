@@ -66,6 +66,7 @@ async def _clean_chunk(chunk: str, llm_cfg: LLMConfig) -> str:
 
 async def _clean_chunk_with_fallback(
     i: int, chunk: str, llm_cfg: LLMConfig, semaphore: asyncio.Semaphore,
+    source_format: str | None = None, ascii_only: bool = False,
 ) -> str:
     """Clean a single chunk with concurrency limiting and fallback."""
     async with semaphore:
@@ -78,29 +79,37 @@ async def _clean_chunk_with_fallback(
                 "(%d chars → %d chars). Using rule-based fallback.",
                 i, len(chunk), len(result),
             )
-            return clean_text(chunk)
+            return clean_text(chunk, source_format=source_format, ascii_only=ascii_only)
         except Exception as exc:
             logger.warning(
                 "LLM cleaning failed for chunk %d, using rule-based fallback: %s", i, exc
             )
-            return clean_text(chunk)
+            return clean_text(chunk, source_format=source_format, ascii_only=ascii_only)
 
 
-async def llm_clean_text(text: str, llm_cfg: LLMConfig) -> str:
+async def llm_clean_text(
+    text: str, llm_cfg: LLMConfig,
+    source_format: str | None = None, ascii_only: bool = False,
+) -> str:
     """Clean text using an LLM. Falls back to rule-based clean_text() on any error.
 
     Chunks are processed concurrently (up to _MAX_CONCURRENT_LLM_CALLS at a time)
-    to speed up large documents. After LLM cleaning, still applies
-    strip_non_speakable() as a safety net to ensure no characters outside
-    printable ASCII reach the TTS tokenizer.
+    to speed up large documents. source_format/ascii_only mirror clean_text and
+    are threaded into the rule-based fallbacks. After LLM cleaning, the
+    strip_non_speakable() ASCII safety net runs only when ascii_only — UTF-8-capable
+    engines (ascii_only=False) keep real accented characters; ASCII-only engines
+    get the net so no out-of-vocabulary character reaches the TTS tokenizer.
     """
     chunks = _split_for_llm(text, llm_cfg.chunk_size)
     semaphore = asyncio.Semaphore(llm_cfg.max_concurrent_calls)
 
     cleaned = await asyncio.gather(*(
-        _clean_chunk_with_fallback(i, chunk, llm_cfg, semaphore)
+        _clean_chunk_with_fallback(
+            i, chunk, llm_cfg, semaphore,
+            source_format=source_format, ascii_only=ascii_only,
+        )
         for i, chunk in enumerate(chunks)
     ))
 
     combined = "\n\n".join(cleaned)
-    return strip_non_speakable(combined)
+    return strip_non_speakable(combined) if ascii_only else combined

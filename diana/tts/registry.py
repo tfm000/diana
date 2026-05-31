@@ -7,6 +7,15 @@ _ENGINE_CLASSES = {
     "kokoro": KokoroEngine,
 }
 
+# Whether each engine's tokenizer requires pure ASCII. Static name->bool map,
+# queried with NO engine import so pipeline.py/llm_cleaner.py can resolve an
+# engine's character capability without pulling onnxruntime/piper onto the
+# cleaning path. native_os (Phase 3) will be False (the OS voices speak UTF-8).
+_ASCII_ONLY_ENGINES = {
+    "kokoro": True,
+    "piper": False,
+}
+
 
 def _get_engine_class(engine_name: str):
     if engine_name == "piper":
@@ -59,3 +68,14 @@ def resolve_engine_name(saved: str) -> str:
 def list_engines() -> list[str]:
     """Return names of all available TTS engines."""
     return ["kokoro", "piper"]
+
+
+def engine_is_ascii_only(engine_name: str) -> bool:
+    """Whether an engine's tokenizer requires pure ASCII. Cheap: no engine import.
+
+    Drives the cleaner's engine-conditional transliteration/ASCII net (CLEAN-07):
+    ASCII-only engines (kokoro) get café->cafe, UTF-8-capable engines (piper)
+    keep café. Unknown engines default to ASCII-only — the safe,
+    lossy-but-never-crashing side. native_os (Phase 3) will be False.
+    """
+    return _ASCII_ONLY_ENGINES.get(engine_name, True)

@@ -91,7 +91,10 @@ def build_digest_text(sources_data: list[dict]) -> str:
             # Whitespace-only excerpts fall back to the headline so a stub article
             # with `excerpt="   "` still produces speakable prose.
             raw = article.excerpt if (article.excerpt and article.excerpt.strip()) else article.headline
-            body = clean_text(raw).strip()
+            # Clean here with UTF-8 preserved (engine unknown at digest-build time);
+            # the resulting txt Job is re-cleaned by the pipeline with the real
+            # engine's ASCII net. The double-clean is intentional and harmless.
+            body = clean_text(raw, source_format="web", ascii_only=False).strip()
             if not body:
                 continue
             parts.append(body)

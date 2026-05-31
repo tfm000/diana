@@ -17,7 +17,7 @@ from diana.processing.cleaner import clean_text
 from diana.processing.llm_cleaner import llm_clean_text
 from diana.processing.merger import merge_chunks
 from diana.processing.synthesizer import synthesize_chunk
-from diana.tts.registry import create_engine
+from diana.tts.registry import create_engine, engine_is_ascii_only
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +55,18 @@ async def process_job(job_id: str, config: DianaConfig) -> None:
         # Clean text for TTS compatibility (per-job choice; None = legacy global behaviour).
         # PRIV-04 gate: the LLM path also requires a configured provider, so with no
         # provider the decision is rule-based regardless of the stored toggle.
+        # Engine character capability is resolved HERE (not in cleaner.py) so the
+        # cleaner stays free of any diana.tts import. source_format = job.file_type
+        # ("pdf"|"epub"|"txt"|"md"|"web"); ascii_only from the static registry map.
         llm_cfg = get_llm_config(config)
         want_llm = job.use_llm if job.use_llm is not None else (llm_cfg is not None)
+        ascii_only = engine_is_ascii_only(job.tts_engine)
         if want_llm and llm_cfg is not None:
-            text = await llm_clean_text(text, llm_cfg)
+            text = await llm_clean_text(
+                text, llm_cfg, source_format=job.file_type, ascii_only=ascii_only
+            )
         else:
-            text = clean_text(text)
+            text = clean_text(text, source_format=job.file_type, ascii_only=ascii_only)
 
         if not text.strip():
             raise ValueError("No text could be extracted from the uploaded file")

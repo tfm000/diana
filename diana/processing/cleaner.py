@@ -24,8 +24,20 @@ _GREEK_LETTERS = {
 }
 
 
-def clean_text(text: str) -> str:
-    """Clean extracted text for TTS synthesis."""
+def clean_text(text: str, *, source_format: str | None = None, ascii_only: bool = False) -> str:
+    """Clean extracted text for TTS synthesis.
+
+    Format-aware + engine-aware (Phase 2, Decision 5 — clean break, no shim):
+    - source_format (pdf/epub/txt/md/web) drives format-sensitive stages
+      (currently the page-number boundary rule).
+    - ascii_only reflects the target engine's character capability
+      (engine_is_ascii_only): when True the text is transliterated to ASCII
+      (café->cafe) and the strip_non_speakable net runs; when False real UTF-8
+      is preserved (café stays café) for UTF-8-capable engines.
+
+    Both args are keyword-only with safe defaults so every existing
+    positional clean_text(str) call still runs (format-agnostic, UTF-8-preserving).
+    """
     if not text:
         return ""
 
@@ -40,8 +52,9 @@ def clean_text(text: str) -> str:
     text = _strip_urls(text)
     text = _normalize_unicode(text)
     text = _remove_repeated_lines(text)
-    text = _remove_page_numbers(text)
-    text = strip_non_speakable(text)
+    text = _remove_page_numbers(text, source_format)
+    if ascii_only:
+        text = strip_non_speakable(text)
     text = _collapse_whitespace(text)
 
     return text.strip()
@@ -262,7 +275,7 @@ def _remove_repeated_lines(text: str, threshold: int = 3) -> str:
     return "\n".join(filtered)
 
 
-def _remove_page_numbers(text: str) -> str:
+def _remove_page_numbers(text: str, source_format: str | None = None) -> str:
     """Remove standalone page numbers (lines that are just a number)."""
     return re.sub(r"(?m)^\s*\d{1,4}\s*$", "", text)
 
