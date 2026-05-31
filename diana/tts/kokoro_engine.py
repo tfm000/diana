@@ -36,13 +36,13 @@ class KokoroEngine:
             raise FileNotFoundError(
                 f"Kokoro model not found at {model}. "
                 "Download it with:\n"
-                "  wget -P data/models/ https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
+                f'  wget -P "{model.parent}" https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx'
             )
         if not voices.exists():
             raise FileNotFoundError(
                 f"Kokoro voices not found at {voices}. "
                 "Download it with:\n"
-                "  wget -P data/models/ https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin"
+                f'  wget -P "{voices.parent}" https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin'
             )
 
         from kokoro_onnx import Kokoro
