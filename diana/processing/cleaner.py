@@ -23,6 +23,19 @@ _GREEK_LETTERS = {
     r"\Psi": "Psi", r"\Omega": "Omega",
 }
 
+# Curated low-ambiguity abbreviations → spoken words (CLEAN-06). Keys are regex
+# fragments with escaped dots; each is applied with a (?<![A-Za-z]) lookbehind so
+# it never fires mid-word (Drone. stays Drone.) and the required trailing period
+# blocks bare tokens (the word "Mr" alone is left). Deliberately conservative:
+# ambiguous units (m, kg, mi) and St. (Saint vs Street) are NOT here — they are
+# left for the TTS engine, honoring the no-over-expansion criterion.
+_ABBREVIATIONS = {
+    r"Dr\.": "Doctor", r"Mr\.": "Mister", r"Mrs\.": "Missus", r"Ms\.": "Miz",
+    r"Prof\.": "Professor", r"e\.g\.": "for example", r"i\.e\.": "that is",
+    r"etc\.": "et cetera", r"vs\.": "versus", r"approx\.": "approximately",
+    r"cf\.": "compare",
+}
+
 # Section/heading words that must survive chart-fragment cluster removal — a
 # stack of these (Introduction / Methods / Results) is a heading list, not chart
 # noise. Extends the original Chapter|Section|Part protection.
@@ -79,6 +92,9 @@ def clean_text(text: str, *, source_format: str | None = None, ascii_only: bool 
     text = _remove_tables(text)
     text = _remove_chart_fragments(text)
     text = _remove_common_footers(text)
+    # Abbreviations expand BEFORE URL/email stripping so dotted tokens
+    # (e.g./i.e./U.S.) are already words before any later URL pass.
+    text = _expand_abbreviations(text)
     text = _strip_urls(text)
     text = _normalize_unicode(text)
     text = _remove_repeated_lines(text)
@@ -349,6 +365,22 @@ def _remove_common_footers(text: str) -> str:
     ]
     combined = "|".join(f"(?:{p})" for p in footer_patterns)
     text = re.sub(combined, "", text, flags=re.MULTILINE | re.IGNORECASE)
+    return text
+
+
+def _expand_abbreviations(text: str) -> str:
+    """Expand the curated abbreviation set to spoken words (CLEAN-06).
+
+    Each entry is applied as re.sub(r"(?<![A-Za-z])" + pat, rep, text): the
+    leading-letter lookbehind prevents mid-word matches (Drone. stays Drone.)
+    and the required trailing period in every pattern prevents matching a bare
+    token (the word "Mr" alone is left). No capitalization fix-up after
+    expansion — the TTS engine handles a lowercase sentence start, keeping v1
+    minimal (RESEARCH Flagged #5). Runs BEFORE URL/email stripping so dotted
+    tokens like e.g./U.S. are already words before any later URL pass. Pure.
+    """
+    for pat, rep in _ABBREVIATIONS.items():
+        text = re.sub(r"(?<![A-Za-z])" + pat, rep, text)
     return text
 
 

@@ -140,6 +140,52 @@ class TestPercentNormalization:
         assert "50 percent" in clean_text("About 50 % done.")
 
 
+class TestAbbreviationExpansion:
+    """Curated low-ambiguity abbreviation expansion (CLEAN-06).
+
+    Only the conservative set expands (Dr./Mr./e.g./vs./etc.). A leading-letter
+    lookbehind blocks mid-word matches (Drone. stays Drone.) and the required
+    trailing period blocks bare-token matches (the word "Mr" alone stays).
+    Ambiguous units (m, kg, mi) and St. (Saint vs Street) are deferred to the
+    engine — they are NOT in the map.
+    """
+
+    def test_titles_expanded_exact(self):
+        assert clean_text("Dr. Smith met Mr. Jones.") == "Doctor Smith met Mister Jones."
+
+    def test_mrs_ms_prof(self):
+        out = clean_text("Mrs. Lee, Ms. Park and Prof. Ng.")
+        assert "Missus" in out
+        assert "Miz" in out
+        assert "Professor" in out
+
+    def test_latinisms_expanded(self):
+        out = clean_text("Compare approx. 5 vs. 10, e.g. here.")
+        assert "approximately" in out
+        assert "versus" in out
+        assert "for example" in out
+
+    def test_ie_etc_cf(self):
+        out = clean_text("Use it, i.e. now, etc. cf. above.")
+        assert "that is" in out
+        assert "et cetera" in out
+        assert "compare" in out
+
+    def test_no_midword_match(self):
+        # A leading-letter lookbehind prevents matching inside a word.
+        assert clean_text("A midword Drone flies.") == "A midword Drone flies."
+
+    def test_bare_token_not_matched(self):
+        # The required trailing period is absent, so bare "Mr" stays.
+        assert "Mr is fine" in clean_text("The word Mr is fine.")
+
+    def test_ambiguous_tokens_not_expanded(self):
+        # St. is intentionally left for the engine (Saint vs Street ambiguity).
+        out = clean_text("Meet on St. Mary St.")
+        assert "Saint" not in out
+        assert "Street" not in out
+
+
 class TestMathAwareInlineRemoval:
     """The math-aware $...$ remover drops real math but currency is gone by then."""
 
@@ -222,9 +268,12 @@ class TestTableRemoval:
         assert "After" in result
 
     def test_prose_with_numbers_preserved(self):
+        # Regression #3 flipped (02-02): percent normalization (CLEAN-06) now
+        # reads 95% as "95 percent"; the prose row itself is still preserved
+        # (not stripped as a table), which is what this case guards.
         text = "The experiment showed 95% accuracy on 3 datasets."
         result = clean_text(text)
-        assert "95%" in result
+        assert "95 percent" in result
 
 
 class TestChartFragments:

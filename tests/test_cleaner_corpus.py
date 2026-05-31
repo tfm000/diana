@@ -48,6 +48,24 @@ _SNAPSHOTS = [
     ("pagenumber_remove", "pdf", True),
     ("footer_remove", "pdf", True),
     ("table_remove", "pdf", True),
+    # normalization (CLEAN-06, 02-02): currency/percent/abbreviation transforms.
+    # Selected by `pytest -k normalization` via the dedicated class below; also
+    # swept by the cross-stage invariant run over every snapshot.
+    ("currency_dollars", "txt", True),
+    ("currency_cents", "txt", True),
+    ("currency_dual", "txt", True),
+    ("percent_normalize", "txt", True),
+    ("abbreviations_expand", "txt", True),
+]
+
+# The CLEAN-06 fixture stems (the `-k normalization` selector resolves to this
+# class). These are transforms (symbol/abbreviation → words), so per the
+# incremental invariant contract this wave registers NO new removal invariant —
+# the existing Wave-2-active _invariants still run over them via the cross-stage
+# sweep; no-URL/email (02-03) and figure-token (02-04) invariants stay deferred.
+_NORMALIZATION = [
+    s for s in _SNAPSHOTS
+    if s[0].startswith(("currency_", "percent_", "abbreviations_"))
 ]
 
 
@@ -121,6 +139,30 @@ class TestSnapshotsTables:
     def test_tables_snapshot_exact(self, name, fmt, ascii_only):
         inp, expected = _load_snapshot(name)
         assert clean_text(inp, source_format=fmt, ascii_only=ascii_only) == expected
+
+
+class TestSnapshotsNormalization:
+    """Exact snapshot match for the CLEAN-06 normalization fixtures (02-02).
+
+    The class name carries the `normalization` token so the VALIDATION selector
+    `pytest tests/test_cleaner_corpus.py -k normalization` resolves here. Covers
+    $5→"5 dollars", $5.50→"5 dollars and 50 cents", the $5-and-$10 both-survive
+    case (currency-before-inline-math), 50%→"50 percent", and Dr./Mr./e.g.
+    expansion.
+    """
+
+    @pytest.mark.parametrize("name, fmt, ascii_only", _NORMALIZATION)
+    def test_normalization_snapshot_exact(self, name, fmt, ascii_only):
+        inp, expected = _load_snapshot(name)
+        assert clean_text(inp, source_format=fmt, ascii_only=ascii_only) == expected
+
+    @pytest.mark.parametrize("name, fmt, ascii_only", _NORMALIZATION)
+    def test_normalization_invariants_hold(self, name, fmt, ascii_only):
+        # Cross-stage: a currency/abbreviation case must still satisfy the
+        # currently-active (Wave-2) invariants. No new removal invariant added.
+        inp, _ = _load_snapshot(name)
+        out = clean_text(inp, source_format=fmt, ascii_only=ascii_only)
+        _invariants(out, ascii_only=ascii_only)
 
 
 class TestInvariantsAcrossSnapshots:
