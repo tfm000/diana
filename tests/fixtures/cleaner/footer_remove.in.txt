@@ -1,0 +1,4 @@
+This is the real article prose that should survive.
+Page 7 of 20
+© 2024 Example Press
+More real prose follows the footer.

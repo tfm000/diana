@@ -32,6 +32,16 @@ _SECTION_WORDS = re.compile(
     re.IGNORECASE,
 )
 
+# Non-decomposing Latin letters → ASCII (NFKD leaves these intact, so they need
+# an explicit map). Used by _transliterate_ascii for ASCII-only engines so e.g.
+# Straße → Strasse rather than losing the ß. Combining-diacritic letters
+# (é, ï, ü, ç …) are handled by NFKD and are deliberately NOT listed here.
+_TRANSLIT_SUPP = {
+    "ß": "ss", "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE",
+    "ø": "o", "Ø": "O", "đ": "d", "Đ": "D", "ł": "l", "Ł": "L",
+    "ð": "d", "Ð": "D", "þ": "th", "Þ": "Th",
+}
+
 
 def clean_text(text: str, *, source_format: str | None = None, ascii_only: bool = False) -> str:
     """Clean extracted text for TTS synthesis.
@@ -63,6 +73,9 @@ def clean_text(text: str, *, source_format: str | None = None, ascii_only: bool 
     text = _remove_repeated_lines(text)
     text = _remove_page_numbers(text, source_format)
     if ascii_only:
+        # Transliterate THEN net — café->cafe (never caf); both skipped for
+        # UTF-8-capable engines so real accents survive.
+        text = _transliterate_ascii(text)
         text = strip_non_speakable(text)
     text = _collapse_whitespace(text)
 
@@ -361,6 +374,34 @@ def _remove_page_numbers(text: str, source_format: str | None = None) -> str:
                 continue  # isolated number paragraph = page number
         out.append(line)
     return "\n".join(out)
+
+
+def _transliterate_ascii(text: str) -> str:
+    """Fold non-ASCII characters to their nearest ASCII form (ASCII-only engines).
+
+    Per character: pass ASCII through unchanged; map non-decomposing letters via
+    _TRANSLIT_SUPP (ß→ss, æ→ae, …); otherwise NFKD-normalize and keep only
+    non-combining ASCII codepoints — so café→cafe, naïve→naive, Zürich→Zurich,
+    Straße→Strasse, and an undecomposable character (e.g. CJK) becomes empty
+    rather than partial garbage. This runs before strip_non_speakable so accents
+    are transliterated, never truncated (café→cafe, never caf). Pure: per-char
+    loop + unicodedata, no regex (no ReDoS surface).
+    """
+    out = []
+    for ch in text:
+        if ord(ch) < 128:
+            out.append(ch)
+        elif ch in _TRANSLIT_SUPP:
+            out.append(_TRANSLIT_SUPP[ch])
+        else:
+            decomposed = unicodedata.normalize("NFKD", ch)
+            out.append(
+                "".join(
+                    c for c in decomposed
+                    if not unicodedata.combining(c) and ord(c) < 128
+                )
+            )
+    return "".join(out)
 
 
 # Characters safe for TTS: basic ASCII printable + newline/tab.

@@ -1,0 +1,168 @@
+"""Two-layer golden-corpus regression suite for the rule-based cleaner (CLEAN-08).
+
+Layer 1 — property invariants (`_invariants`): a small set of assertions run over
+every committed snapshot input for cross-stage coverage. The invariant set is
+assembled INCREMENTALLY across Phase 2: at Wave 1 only the removal stages that
+already exist (tables, page numbers, footers, the ASCII net) are live, so this
+file asserts ONLY (a) preservation invariants (headings/years/accents survive)
+and (b) basic structural invariants that are already true (no pipe-table rows,
+no dangling punctuation, no triple newlines). Removal invariants for URLs/emails
+(02-03) and figure/footnote tokens (02-04) are added by those plans at the
+clearly-marked extension point — adding them now would fail against Wave-1
+fixtures that legitimately still carry those tokens.
+
+Layer 2 — snapshot fixtures (`tests/fixtures/cleaner/*.in.txt` / `*.expected.txt`):
+exact `clean_text(inp, source_format=fmt, ascii_only=flag) == expected` checks.
+
+The suite is the loud-failure guard for ROADMAP criterion #4: reverting a Task-2
+or Task-3 fix must turn a corpus test red with a legible diff.
+"""
+
+import re
+from pathlib import Path
+
+import pytest
+
+from diana.processing.cleaner import clean_text
+
+_FIXTURE_DIR = Path(__file__).parent / "fixtures" / "cleaner"
+
+
+def _load_snapshot(name: str) -> tuple[str, str]:
+    """Read a fixture's (input, expected) pair, normalising one trailing newline.
+
+    clean_text() output is already stripped, so a trailing newline an editor may
+    append to a fixture is not significant — strip it from both files.
+    """
+    inp = (_FIXTURE_DIR / f"{name}.in.txt").read_text().rstrip("\n")
+    expected = (_FIXTURE_DIR / f"{name}.expected.txt").read_text().rstrip("\n")
+    return inp, expected
+
+
+# Snapshot registry: (name, source_format, ascii_only). The `name` is the fixture
+# stem under tests/fixtures/cleaner/. Each tuple is exercised both as an exact
+# snapshot assertion AND as an input to the cross-stage invariant sweep.
+_SNAPSHOTS = [
+    ("years_preserve", "txt", True),
+    ("headings_preserve", "pdf", True),
+    ("pagenumber_remove", "pdf", True),
+    ("footer_remove", "pdf", True),
+    ("table_remove", "pdf", True),
+]
+
+
+def _invariants(out: str, *, ascii_only: bool = False) -> None:
+    """Assert the Wave-1 invariant set holds for a cleaned string.
+
+    Wave 1 (this plan, 02-01) asserts only what the stages landed so far
+    guarantee:
+
+    Structural (already true after Wave 1):
+      - no surviving pipe-table row
+      - no dangling artifact: " ,", "( )", double space, triple newline
+
+    Engine-conditional ASCII:
+      - when ascii_only, every codepoint is ASCII
+
+    Preservation (the CLEAN-07 over-stripping guard) is asserted per-fixture in
+    the snapshot tests and in the dedicated preservation tests below, not here,
+    because not every snapshot input contains headings/years.
+
+    ----------------------------------------------------------------------------
+    Wave N adds (extension point — each later slice appends its removal invariant
+    here AS IT IMPLEMENTS the stage; do NOT add these earlier or Wave-1 fixtures
+    that still carry the tokens will fail):
+      - 02-03 (CLEAN-05): no URL / no "www." / no "<user>@<host>.<tld>" email
+      - 02-04 (CLEAN-01/03): no figure/table reference token
+            re.search(r"\\b(Figure|Table|Fig\\.|Tab\\.)\\s*\\d", out)
+      - 02-04 (CLEAN-01): no LaTeX backslash / brace residue, if a fixture carries it
+    ----------------------------------------------------------------------------
+    """
+    # Structural removal invariants (live at Wave 1).
+    assert not re.search(r"(?m)^\|.*\|$", out), f"pipe-table row leaked: {out!r}"
+    assert " ," not in out, f"dangling space-comma: {out!r}"
+    assert "( )" not in out, f"empty parens: {out!r}"
+    assert "  " not in out, f"double space: {out!r}"
+    assert "\n\n\n" not in out, f"triple newline: {out!r}"
+
+    # Engine-conditional ASCII path.
+    if ascii_only:
+        assert all(ord(c) < 128 for c in out), f"non-ASCII in ascii_only output: {out!r}"
+
+
+class TestSnapshotsPreserve:
+    """Exact snapshot match for the preservation fixtures (CLEAN-07 / CLEAN-02)."""
+
+    @pytest.mark.parametrize("name, fmt, ascii_only", [
+        s for s in _SNAPSHOTS if "preserve" in s[0]
+    ])
+    def test_preserve_snapshot_exact(self, name, fmt, ascii_only):
+        inp, expected = _load_snapshot(name)
+        assert clean_text(inp, source_format=fmt, ascii_only=ascii_only) == expected
+
+
+class TestSnapshotsHeadersFooters:
+    """Exact snapshot match for the header/footer + page-number fixtures (CLEAN-02)."""
+
+    @pytest.mark.parametrize("name, fmt, ascii_only", [
+        s for s in _SNAPSHOTS if s[0] in ("pagenumber_remove", "footer_remove")
+    ])
+    def test_headers_footers_snapshot_exact(self, name, fmt, ascii_only):
+        inp, expected = _load_snapshot(name)
+        assert clean_text(inp, source_format=fmt, ascii_only=ascii_only) == expected
+
+
+class TestSnapshotsTables:
+    """Exact snapshot match for the table-removal fixture (CLEAN-04)."""
+
+    @pytest.mark.parametrize("name, fmt, ascii_only", [
+        s for s in _SNAPSHOTS if s[0] == "table_remove"
+    ])
+    def test_tables_snapshot_exact(self, name, fmt, ascii_only):
+        inp, expected = _load_snapshot(name)
+        assert clean_text(inp, source_format=fmt, ascii_only=ascii_only) == expected
+
+
+class TestInvariantsAcrossSnapshots:
+    """Run the Wave-1 invariant sweep over EVERY snapshot input (cross-stage coverage)."""
+
+    @pytest.mark.parametrize("name, fmt, ascii_only", _SNAPSHOTS)
+    def test_invariants_hold(self, name, fmt, ascii_only):
+        inp, _ = _load_snapshot(name)
+        out = clean_text(inp, source_format=fmt, ascii_only=ascii_only)
+        _invariants(out, ascii_only=ascii_only)
+
+
+class TestPreservationInvariants:
+    """The CLEAN-07 over-stripping guard — both directions, ascii_only parametrized."""
+
+    def test_preserve_heading_stack(self):
+        out = clean_text(
+            "Introduction\nMethods\nResults\nThe body paragraph follows here.",
+            source_format="pdf",
+        )
+        assert "Introduction" in out
+        assert "Methods" in out
+        assert "Results" in out
+
+    def test_preserve_year_list(self):
+        out = clean_text(
+            "Yearly totals:\n\n2019\n2020\n\nTotals climbed.", source_format="txt"
+        )
+        assert "2019" in out
+        assert "2020" in out
+
+    def test_preserve_accents_for_utf8_engine(self):
+        # UTF-8-capable engine keeps the real accented form.
+        assert "café" in clean_text("The café is open.", ascii_only=False)
+
+    def test_transliterate_accents_for_ascii_engine(self):
+        # ASCII engine transliterates, never truncates: cafe present, no bare "caf ".
+        out = clean_text("The café is open.", ascii_only=True)
+        assert "cafe" in out
+        assert "caf " not in out
+        assert all(ord(c) < 128 for c in out)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    pytest.main([__file__, "-v"])

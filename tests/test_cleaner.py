@@ -183,6 +183,15 @@ class TestChartFragments:
         result = clean_text(text)
         assert "Chapter 1" in result
 
+    def test_section_headings_preserved(self):
+        # A heading stack must survive the chart-fragment cluster removal — the
+        # _SECTION_WORDS allow-list protects it (the canonical over-stripping bug).
+        text = "Introduction\nMethods\nResults\nThis is the body paragraph."
+        result = clean_text(text)
+        assert "Introduction" in result
+        assert "Methods" in result
+        assert "Results" in result
+
     def test_two_short_lines_preserved(self):
         text = "Label A\nLabel B\nThis is normal text here."
         result = clean_text(text)
@@ -312,11 +321,27 @@ class TestStripNonSpeakable:
         result = clean_text("The value is \u2264 5.", ascii_only=True)
         assert "\u2264" not in result
 
-    def test_accented_chars_removed(self):
-        # Provisional flip for the widened signature; Task 3 parametrizes this fully
-        # (ASCII engine caf\u00e9->cafe, UTF-8 engine caf\u00e9 preserved).
+    @pytest.mark.parametrize(
+        "ascii_only, expected_present, expected_absent",
+        [
+            # ASCII engine: transliterate, never truncate -> "cafe" (not bare "caf ").
+            (True, "cafe", "caf "),
+            # UTF-8 engine: preserve the accented form.
+            (False, "caf\u00e9", None),
+        ],
+    )
+    def test_accented_chars(self, ascii_only, expected_present, expected_absent):
+        result = clean_text("The caf\u00e9 is open.", ascii_only=ascii_only)
+        assert expected_present in result
+        if expected_absent is not None:
+            assert expected_absent not in result
+
+    def test_transliteration_not_truncation(self):
+        # The canonical bug: caf\u00e9 must become cafe, never the bare stem caf.
         result = clean_text("The caf\u00e9 is open.", ascii_only=True)
-        assert "\u00e9" not in result
+        assert "cafe" in result
+        assert "caf " not in result
+        assert all(ord(c) < 128 for c in result)
 
     def test_emoji_removed(self):
         result = clean_text("Great job! \U0001f44d", ascii_only=True)

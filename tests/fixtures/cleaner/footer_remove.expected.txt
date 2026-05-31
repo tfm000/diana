@@ -1,0 +1,3 @@
+This is the real article prose that should survive.
+
+More real prose follows the footer.
