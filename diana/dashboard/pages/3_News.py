@@ -780,6 +780,7 @@ if st.button("Convert to Audio", type="primary", key="news_convert_btn"):
             id=job_id, filename=filename, file_type="txt",
             upload_path=tmp.name, status=JobStatus.PENDING,
             tts_engine=tts_engine, tts_voice=tts_voice_id,
+            use_llm=use_llm,
         )
         create_job(db_path, job)
         st.success(f"Job created for **{filename}**.")
