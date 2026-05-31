@@ -91,6 +91,69 @@ class TestRemainingLatexRemoval:
         assert "}" not in result
 
 
+class TestCurrencyNormalization:
+    """Currency symbol -> spoken word, digits preserved (CLEAN-06).
+
+    Runs BEFORE the inline-math remover so $5 and $10 both survive (the hard
+    ordering constraint): once currency converts, no '$' is left to mis-pair.
+    """
+
+    def test_dollars_simple(self):
+        assert "5 dollars" in clean_text("I paid $5 for lunch.")
+
+    def test_dollars_and_cents(self):
+        assert "5 dollars and 50 cents" in clean_text("$5.50 each.")
+
+    def test_thousands_grouping(self):
+        assert "1,000 dollars" in clean_text("It was $1,000 total.")
+
+    def test_pounds(self):
+        assert "10 pounds" in clean_text("It cost £10.")
+
+    def test_euros(self):
+        assert "20 euros" in clean_text("Or €20.")
+
+    def test_digits_never_spelled(self):
+        # Only the symbol becomes a word; the digits are preserved verbatim.
+        out = clean_text("I paid $5 for lunch.")
+        assert "5 dollars" in out
+        assert "five" not in out
+
+    def test_dual_currency_both_survive(self):
+        # The canonical bug: the old $...$ remover paired the first $ with the
+        # next and ate "$5 and $" -> only "10" survived. Currency-first fixes it.
+        out = clean_text("I paid $5 and $10 for lunch.", source_format="txt")
+        assert "5 dollars" in out
+        assert "10 dollars" in out
+
+
+class TestPercentNormalization:
+    """Percent symbol -> 'percent', digits preserved (CLEAN-06)."""
+
+    def test_integer_percent(self):
+        assert "95 percent" in clean_text("Up 95% today.")
+
+    def test_decimal_percent(self):
+        assert "3.5 percent" in clean_text("Margin of 3.5%.")
+
+    def test_percent_with_space(self):
+        assert "50 percent" in clean_text("About 50 % done.")
+
+
+class TestMathAwareInlineRemoval:
+    """The math-aware $...$ remover drops real math but currency is gone by then."""
+
+    def test_real_inline_math_removed(self):
+        out = clean_text("Before $x + y$ after")
+        assert "x + y" not in out
+
+    def test_currency_not_eaten_as_math(self):
+        # "$5 and $10" must not be treated as one math span and partially eaten.
+        out = clean_text("I paid $5 and $10 for lunch.")
+        assert "5 dollars" in out
+        assert "10 dollars" in out
+
+
 class TestCitations:
     def test_numbered_single(self):
         assert clean_text("As shown [1] here.") == "As shown here."

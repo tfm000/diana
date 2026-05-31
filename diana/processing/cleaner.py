@@ -42,6 +42,14 @@ _TRANSLIT_SUPP = {
     "ð": "d", "Ð": "D", "þ": "th", "Þ": "Th",
 }
 
+# Inline-math span matcher for _remove_inline_math. Bounded {1,200} over a
+# negated [^$\n] class — no nested unbounded repetition, so no catastrophic
+# backtracking (ReDoS mitigation, T-02-01; verified linear on 100k adversarial
+# '$' input). Currency normalization runs BEFORE this, so by the time it sees
+# the text every real '$5'/'$10' has already become "5 dollars"/"10 dollars" —
+# nothing currency-shaped is left for it to mis-pair.
+_INLINE_MATH_RE = re.compile(r"\$([^$\n]{1,200}?)\$")
+
 
 def clean_text(text: str, *, source_format: str | None = None, ascii_only: bool = False) -> str:
     """Clean extracted text for TTS synthesis.
@@ -62,7 +70,10 @@ def clean_text(text: str, *, source_format: str | None = None, ascii_only: bool 
 
     text = _remove_latex_display(text)
     text = _simplify_latex_inline(text)
-    text = _remove_remaining_latex(text)
+    # Currency/percent MUST run before the inline-math remover (proven: else
+    # "$5 and $10" → "10"). It removes every '$' so nothing mis-pairs.
+    text = _normalize_currency_percent(text)
+    text = _remove_inline_math(text)
     text = _remove_citations(text)
     text = _remove_figure_table_refs(text)
     text = _remove_tables(text)
@@ -128,10 +139,48 @@ def _simplify_latex_inline(text: str) -> str:
     return text
 
 
-def _remove_remaining_latex(text: str) -> str:
-    """Strip any remaining inline $...$ math and stray LaTeX commands."""
-    # Inline math $...$
-    text = re.sub(r"\$[^$]*?\$", "", text)
+def _normalize_currency_percent(text: str) -> str:
+    """Currency/percent symbols → spoken words, digits preserved (CLEAN-06).
+
+    Substitution order matters: the cents form ($5.50) must run before the bare
+    dollar form ($5) so "$5.50" is not partially consumed as "$5". Only the
+    SYMBOL becomes a word — the digits are kept verbatim (no number-to-words;
+    VNEXT-03 stays deferred and the TTS engine vocalizes "5", "50", etc.).
+
+    This MUST run BEFORE _remove_inline_math (the single load-bearing ordering
+    constraint of the phase): the old inline-math remover paired the first '$'
+    with the next, so "$5 and $10" → "10" (currency eaten). Converting currency
+    first removes every '$', so nothing math-shaped is left to mis-pair.
+    Pure: re-only, no logging/exceptions.
+    """
+    text = re.sub(r"\$(\d+)\.(\d{2})\b", r"\1 dollars and \2 cents", text)  # cents first
+    text = re.sub(r"\$(\d+(?:,\d{3})*)\b", r"\1 dollars", text)
+    text = re.sub(r"(\d+(?:\.\d+)?)\s*%", r"\1 percent", text)
+    text = re.sub(r"£(\d+(?:,\d{3})*)\b", r"\1 pounds", text)
+    text = re.sub(r"€(\d+(?:,\d{3})*)\b", r"\1 euros", text)
+    return text
+
+
+def _remove_inline_math(text: str) -> str:
+    """Strip inline $...$ math (math-aware) plus stray LaTeX commands/braces.
+
+    A $...$ span is dropped only when its inner text carries a math signal
+    ([A-Za-z\\^_=+<>/]) — so a rare currency-shaped leftover would be kept
+    rather than blindly eaten. In practice _normalize_currency_percent has
+    already removed every currency '$' before this runs, so the only $-spans
+    reaching here are genuine math (e.g. "$x + y$").
+
+    The stray-command and stray-brace removal that was the back half of the old
+    _remove_remaining_latex stays here so \\textbf{...}-content survival and
+    \\command / { } stripping keep working.
+    """
+    def repl(m: re.Match) -> str:
+        inner = m.group(1)
+        if re.search(r"[A-Za-z\\^_=+<>/]", inner):  # math signal → real math
+            return ""
+        return m.group(0)  # keep (rare currency-shaped leftover)
+
+    text = _INLINE_MATH_RE.sub(repl, text)
     # Stray LaTeX commands like \textbf{...} → keep content
     text = re.sub(r"\\(?:textbf|textit|emph|text|mathrm|mathbf)\{([^}]*)\}", r"\1", text)
     # Other \commands (no braces) — remove the command, keep surrounding text
