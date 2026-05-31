@@ -257,12 +257,52 @@ class TestRepeatedLines:
 
 class TestPageNumbers:
     def test_standalone_number_removed(self):
-        result = clean_text("Some text.\n  42  \nMore text.")
+        # Only an isolated number paragraph (blank-flanked) is a page number.
+        result = clean_text("End of section.\n\n42\n\nNew section.")
         assert "42" not in result
+
+    def test_number_between_prose_preserved(self):
+        # A number between two prose lines is NOT a boundary -> preserved.
+        result = clean_text("Some text.\n42\nMore text.")
+        assert "42" in result
 
     def test_number_in_text_preserved(self):
         result = clean_text("There are 42 items.")
         assert "42" in result
+
+
+class TestHeadersFooters:
+    """Format-aware header/footer half of CLEAN-02 (reused footer stages + boundary rule)."""
+
+    def test_pdf_page_of_y_footer_stripped(self):
+        result = clean_text(
+            "Real prose here.\nPage 3 of 10\nMore prose.", source_format="pdf"
+        )
+        assert "Page 3 of 10" not in result
+        assert "Real prose here" in result
+        assert "More prose" in result
+
+    def test_copyright_footer_stripped(self):
+        result = clean_text(
+            "Real prose here.\n© 2024 Some Publisher\nMore prose.", source_format="pdf"
+        )
+        assert "Publisher" not in result
+        assert "Real prose here" in result
+
+    def test_doi_footer_stripped(self):
+        result = clean_text(
+            "Real prose here.\nDOI: 10.1234/abcd.5678\nMore prose.", source_format="pdf"
+        )
+        assert "DOI" not in result
+        assert "More prose" in result
+
+    def test_txt_prose_with_similar_tokens_kept(self):
+        # Footer/page-number removal is structural, not token-greedy: TXT prose
+        # carrying similar tokens is preserved.
+        kept = clean_text(
+            "We covered pages 3 through 10 of the manual.", source_format="txt"
+        )
+        assert "pages 3 through 10" in kept
 
 
 class TestStripNonSpeakable:

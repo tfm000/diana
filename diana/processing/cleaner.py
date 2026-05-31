@@ -23,6 +23,15 @@ _GREEK_LETTERS = {
     r"\Psi": "Psi", r"\Omega": "Omega",
 }
 
+# Section/heading words that must survive chart-fragment cluster removal — a
+# stack of these (Introduction / Methods / Results) is a heading list, not chart
+# noise. Extends the original Chapter|Section|Part protection.
+_SECTION_WORDS = re.compile(
+    r"^(?:Chapter|Section|Part|Introduction|Methods?|Results?|Discussion|"
+    r"Conclusion|Abstract|Appendix)\b",
+    re.IGNORECASE,
+)
+
 
 def clean_text(text: str, *, source_format: str | None = None, ascii_only: bool = False) -> str:
     """Clean extracted text for TTS synthesis.
@@ -139,63 +148,114 @@ def _remove_figure_table_refs(text: str) -> str:
     return text
 
 
+def _is_structured_row(s: str) -> bool:
+    """Whether a stripped line looks like one row of a structured table.
+
+    True for pipe-wrapped rows, tab-separated rows (>=2 tabs), or space-separated
+    rows that are mostly numeric tokens (>=3 tokens, >0.6 numeric fraction).
+    """
+    if re.match(r"^\|.*\|$", s):
+        return True
+    if s.count("\t") >= 2:
+        return True
+    tokens = s.split()
+    if len(tokens) >= 3:
+        numeric = sum(1 for t in tokens if re.fullmatch(r"[\d.,;:%+\-]+", t))
+        if numeric / len(tokens) > 0.6:
+            return True
+    return False
+
+
 def _remove_tables(text: str) -> str:
-    """Remove tabular content: pipe tables, tab-separated rows, and aligned columns."""
+    """Remove tabular content only when it forms a real table block.
+
+    Conservative (CLEAN-04): a numeric/structured run is dropped only when >=2
+    adjacent structured rows form a block — so a lone number-rich sentence
+    (e.g. "in 2019, 2020 and 2021 sales rose") is KEPT. Pipe tables and
+    tab-separated rows still register as structured rows.
+    """
     lines = text.split("\n")
-    cleaned = []
-    for line in lines:
-        stripped = line.strip()
-        # Markdown/pipe table rows: | col1 | col2 | col3 |
-        if re.match(r"^\|.*\|$", stripped):
-            continue
-        # Markdown table dividers: |---|---|---|
-        if re.match(r"^\|[\s\-:|]+\|$", stripped):
-            continue
-        # Tab-separated rows with 3+ columns (common table extraction artifact)
-        if stripped.count("\t") >= 2:
-            continue
-        # Lines that are mostly numbers/short tokens separated by spaces
-        # (e.g. "12.5  34.2  56.1  78.9" — extracted table data)
-        tokens = stripped.split()
-        if len(tokens) >= 3 and sum(1 for t in tokens if re.match(r"^[\d.,;:%+\-]+$", t)) / len(tokens) > 0.6:
-            continue
-        cleaned.append(line)
-    return "\n".join(cleaned)
+    keep = [True] * len(lines)
+    i = 0
+    while i < len(lines):
+        if _is_structured_row(lines[i].strip()):
+            j = i
+            while j < len(lines) and _is_structured_row(lines[j].strip()):
+                j += 1
+            if j - i >= 2:  # real table block (>=2 adjacent structured rows)
+                for k in range(i, j):
+                    keep[k] = False
+            i = j
+        else:
+            i += 1
+    return "\n".join(line for line, k in zip(lines, keep) if k)
+
+
+def _is_numeric_line(s: str) -> bool:
+    """Whether a stripped line is a single bare number (e.g. a year or axis tick)."""
+    tokens = s.split()
+    if not tokens:
+        return False
+    numeric = sum(1 for t in tokens if re.fullmatch(r"[\d.,:%+\-]+", t))
+    return numeric / len(tokens) >= 0.6
+
+
+def _is_chart_label(s: str) -> bool:
+    """Whether a stripped line is a short non-sentence label (axis title, legend entry).
+
+    A few tokens, under ~20 chars, no terminal punctuation — never a section word.
+    Real prose ends in punctuation or runs longer. This is the signal that a
+    numeric run is a CHART (ticks beside labels) rather than a data column or a
+    year list (which carry no labels and must be preserved).
+    """
+    if _SECTION_WORDS.match(s):
+        return False
+    tokens = s.split()
+    if not tokens:
+        return False
+    if _is_numeric_line(s):
+        return False
+    return len(tokens) <= 2 and len(s) < 20 and not s.endswith((".", "!", "?", ":"))
+
+
+def _is_noise_line(s: str) -> bool:
+    """Whether a stripped line is chart noise: a bare number (tick) or a short label.
+
+    Protected (never noise): section/heading words and empty lines.
+    """
+    if _SECTION_WORDS.match(s):
+        return False
+    return _is_numeric_line(s) or _is_chart_label(s)
 
 
 def _remove_chart_fragments(text: str) -> str:
-    """Remove short fragmented lines typical of chart/graph text extraction.
+    """Remove clusters of chart/graph text-extraction noise.
 
-    Chart text extracted from PDFs tends to appear as clusters of very short
-    lines — axis labels, legend entries, tick values, etc.
+    Chart text extracted from PDFs tends to appear as clusters of axis labels,
+    legend entries, and tick values. Conservative (CLEAN-07): a >=3-line cluster
+    of noise lines is dropped only when it contains at least one short label
+    (so it reads as a chart, ticks beside labels) — a heading stack
+    (Introduction / Methods / Results), real-word lines, and a pure number/year
+    list (e.g. 2019 / 2020 / 2021, which has no labels) are all preserved.
+    A standalone numeric run is left to the table/page-number stages.
     """
     lines = text.split("\n")
     cleaned = []
     i = 0
     while i < len(lines):
-        # Look for clusters of 3+ consecutive short lines (< 30 chars)
-        # that aren't normal prose (no sentence-ending punctuation)
         cluster_start = i
-        while i < len(lines):
-            stripped = lines[i].strip()
-            is_short_fragment = (
-                len(stripped) < 30
-                and stripped  # not empty
-                and not stripped.endswith((".", "!", "?", ":"))
-                and not re.match(r"^(Chapter|Section|Part)\s", stripped, re.IGNORECASE)
-            )
-            if is_short_fragment:
-                i += 1
-            else:
-                break
+        while i < len(lines) and _is_noise_line(lines[i].strip()):
+            i += 1
         cluster_len = i - cluster_start
-        if cluster_len >= 3:
-            # Skip the cluster (likely chart/axis text)
+        cluster = lines[cluster_start:i]
+        has_label = any(_is_chart_label(line.strip()) for line in cluster)
+        if cluster_len >= 3 and has_label:
+            # Skip the cluster (a chart: tick values beside axis/legend labels).
             i = cluster_start + cluster_len
         else:
-            # Keep these lines
-            for j in range(cluster_start, cluster_start + cluster_len):
-                cleaned.append(lines[j])
+            # Keep the lines (too small, or a label-less number/year run).
+            for line in cluster:
+                cleaned.append(line)
             if i == cluster_start:
                 cleaned.append(lines[i])
                 i += 1
@@ -276,8 +336,31 @@ def _remove_repeated_lines(text: str, threshold: int = 3) -> str:
 
 
 def _remove_page_numbers(text: str, source_format: str | None = None) -> str:
-    """Remove standalone page numbers (lines that are just a number)."""
-    return re.sub(r"(?m)^\s*\d{1,4}\s*$", "", text)
+    """Remove standalone page numbers — only an isolated number paragraph.
+
+    Conservative (CLEAN-02 page-number half): a 1-4 digit line is dropped only
+    when both neighbours are blank or document edges, i.e. an isolated number
+    paragraph. PDF pages are joined with "\\n\\n" (pdf_parser.py), so such
+    isolated number paragraphs arise from PDF page structure, while TXT/EPUB
+    prose keeps its inline numbers (years, chapter numbers, numeric list items)
+    because they are not blank-flanked — so the same rule strips PDF page numbers
+    without a parser change.
+
+    source_format is accepted to document/guard the boundary intent and is
+    reserved for a future form-feed (\\f) sentinel approach; parsers are out of
+    scope for this phase, so it does not change behaviour here.
+    """
+    lines = text.split("\n")
+    out = []
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if re.fullmatch(r"\d{1,4}", s):
+            prev_blank = (i == 0) or (lines[i - 1].strip() == "")
+            next_blank = (i == len(lines) - 1) or (lines[i + 1].strip() == "")
+            if prev_blank and next_blank:
+                continue  # isolated number paragraph = page number
+        out.append(line)
+    return "\n".join(out)
 
 
 # Characters safe for TTS: basic ASCII printable + newline/tab.
