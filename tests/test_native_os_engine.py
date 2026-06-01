@@ -65,6 +65,22 @@ for _modname, _attr in (
         continue
 _RESOLVER_AVAILABLE = _resolve_default_voice is not None
 
+# The None/empty-safe picker glue (Plan 04 checkpoint regression): maps a
+# selectbox's selected display name to a voice id without crashing when the
+# filtered option list is empty (selectbox returns None -> KeyError: None).
+_resolve_selected_voice_id = None
+for _modname, _attr in (
+    ("diana.tts.native_os_engine", "resolve_selected_voice_id"),
+    ("diana.dashboard.voice_picker", "resolve_selected_voice_id"),
+):
+    try:  # pragma: no cover - import probe
+        _mod = __import__(_modname, fromlist=[_attr])
+        _resolve_selected_voice_id = getattr(_mod, _attr)
+        break
+    except (ImportError, AttributeError):
+        continue
+_SELECT_RESOLVER_AVAILABLE = _resolve_selected_voice_id is not None
+
 # TTSVoice tier/bilingual fields (Plan 02) — needed for filter-by-tier.
 _HAS_TIER_FIELDS = hasattr(TTSVoice("i", "n", "l", "g"), "tier")
 
@@ -240,3 +256,35 @@ def test_voice_filter_search():
     if _HAS_TIER_FIELDS:
         novelty = _filter_voices(voices, tier="novelty")
         assert {v.id for v in novelty} == {"Zarvox"}
+
+
+# --- NATIVE-05 checkpoint regression: empty-filter picker must not crash -----
+@pytest.mark.skipif(
+    not _SELECT_RESOLVER_AVAILABLE,
+    reason="resolve_selected_voice_id picker glue implemented in Plan 04",
+)
+def test_resolve_selected_voice_id_empty_filter_no_crash():
+    """An empty filtered list (selectbox -> None) yields the empty-id fallback.
+
+    Reproduces the live KeyError: None crash on the Upload/Settings voice picker
+    when the language/quality filters or the name search match no voice. The old
+    glue did ``voice_options[selected_name]``; with an empty option list the
+    selectbox returns ``None`` and indexing raised. The fix must return ``""``
+    (use the engine/OS default) instead of raising.
+    """
+    # Empty options + None selection (the exact crash scenario) -> "" , no raise.
+    assert _resolve_selected_voice_id({}, None) == ""
+
+    # A non-empty catalog but a None selection (filters narrowed to empty on this
+    # rerun while a stale dict lingers) must also be None-safe, never KeyError.
+    voice_options = {v.name: v.id for v in _sample_voices()}
+    assert _resolve_selected_voice_id(voice_options, None) == ""
+
+    # An empty-string selection is treated as "no selection" -> "".
+    assert _resolve_selected_voice_id(voice_options, "") == ""
+
+    # A name absent from the options (cross-engine / stale) -> "" , not KeyError.
+    assert _resolve_selected_voice_id(voice_options, "GhostVoice") == ""
+
+    # The happy path still resolves a real selection to its id.
+    assert _resolve_selected_voice_id(voice_options, "Amélie") == "Amelie"

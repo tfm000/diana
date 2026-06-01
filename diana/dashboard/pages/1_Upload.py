@@ -11,7 +11,11 @@ from diana.dashboard.sidebar import get_icon_image, setup_sidebar
 from diana.database import create_job, get_setting, init_db, set_setting
 from diana.llm.registry import get_llm_config
 from diana.models import Job, JobStatus, parse_page_range
-from diana.tts.native_os_engine import filter_voices, order_by_quality
+from diana.tts.native_os_engine import (
+    filter_voices,
+    order_by_quality,
+    resolve_selected_voice_id,
+)
 from diana.tts.registry import (
     create_engine,
     get_engine_voices,
@@ -147,10 +151,20 @@ with col2:
             default_idx = i
             break
 
-    selected_voice_name = st.selectbox(
-        "Voice", voice_display, index=default_idx, key=f"voice_{engine_name}"
-    )
-    selected_voice_id = voice_options[selected_voice_name] if voice_options else ""
+    if voice_display:
+        selected_voice_name = st.selectbox(
+            "Voice", voice_display, index=default_idx, key=f"voice_{engine_name}"
+        )
+    else:
+        # Filters/search matched no voice: an empty selectbox returns None and
+        # indexing the options would crash. Show a friendly, non-technical nudge
+        # and fall back to the empty id (= use the engine/OS default voice).
+        st.info(
+            "No voices match your filters. Clear the language/quality filter or "
+            "search box to see all voices."
+        )
+        selected_voice_name = None
+    selected_voice_id = resolve_selected_voice_id(voice_options, selected_voice_name)
 
     # Remember the per-engine choice durably (write only on change) — survives
     # restart and engine switching (D-03). Don't persist an empty id (= "use OS

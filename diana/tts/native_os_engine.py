@@ -141,6 +141,27 @@ def resolve_default_voice(
     return engine_default
 
 
+def resolve_selected_voice_id(
+    voice_options: dict[str, str], selected_name: str | None
+) -> str:
+    """Map a picker's selected display name to its voice id, None/empty-safe.
+
+    The Streamlit voice ``selectbox`` returns ``None`` when its option list is
+    empty (i.e. the language/quality filters or the name search matched no voice).
+    Indexing ``voice_options[None]`` would then raise ``KeyError: None`` and crash
+    the page. This helper resolves the id defensively: it returns the mapped id
+    only when ``selected_name`` is truthy AND present in ``voice_options``;
+    otherwise it returns ``""`` — the "use the engine/OS system default" sentinel
+    (D-02), so conversion still has a sane fallback instead of crashing.
+
+    Pure: no streamlit, no I/O — just a guarded dict lookup, so the empty/None
+    path is unit-testable without a Streamlit ScriptRunContext.
+    """
+    if not selected_name:
+        return ""
+    return voice_options.get(selected_name, "")
+
+
 class NativeOSEngine:
     """OS-native TTS — macOS ``say`` here; Windows WinRT in Plan 05.
 

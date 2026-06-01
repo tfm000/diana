@@ -6,7 +6,11 @@ import streamlit as st
 from diana.config import get_config, save_config
 from diana.dashboard.sidebar import get_icon_image, setup_sidebar
 from diana.database import get_setting, set_setting
-from diana.tts.native_os_engine import filter_voices, order_by_quality
+from diana.tts.native_os_engine import (
+    filter_voices,
+    order_by_quality,
+    resolve_selected_voice_id,
+)
 from diana.tts.registry import (
     get_engine_voices,
     list_engines,
@@ -144,10 +148,19 @@ for i, v in enumerate(voices):
     if v.id == _resolved_default:
         default_voice_idx = i
         break
-selected_voice_name = st.selectbox(
-    "Default Voice", voice_display, index=default_voice_idx, key=f"settings_voice_{engine}"
-)
-selected_voice_id = voice_options.get(selected_voice_name, "")
+if voice_display:
+    selected_voice_name = st.selectbox(
+        "Default Voice", voice_display, index=default_voice_idx, key=f"settings_voice_{engine}"
+    )
+else:
+    # Filters/search matched no voice: an empty selectbox returns None. Show a
+    # friendly nudge and fall back to the empty id (= use the engine/OS default).
+    st.info(
+        "No voices match your filters. Clear the language/quality filter or "
+        "search box to see all voices."
+    )
+    selected_voice_name = None
+selected_voice_id = resolve_selected_voice_id(voice_options, selected_voice_name)
 
 # Persist the per-engine choice durably (write only on change) — mirrors Upload so
 # the two pages agree on the remembered voice (D-03). Empty id = "use OS default",
