@@ -126,6 +126,49 @@ class TestCurrencyNormalization:
         assert "5 dollars" in out
         assert "10 dollars" in out
 
+    def test_magnitude_suffix_dollars_no_symbol(self):
+        # WR-02 regression: a magnitude-suffixed amount must convert with NO
+        # leftover '$' (which is printable ASCII and so even the ASCII net would
+        # not catch it) and speak naturally as thousand/million/billion.
+        for text, spoken in [
+            ("Revenue was $5k last year.", "5 thousand dollars"),
+            ("Revenue was $5m last year.", "5 million dollars"),
+            ("Revenue was $5bn last year.", "5 billion dollars"),
+            ("Revenue was $5b last year.", "5 billion dollars"),
+        ]:
+            out = clean_text(text, ascii_only=True)
+            assert "$" not in out, f"$ leaked: {out!r}"
+            assert spoken in out, f"expected {spoken!r} in {out!r}"
+
+    def test_magnitude_suffix_pounds_euros_no_symbol(self):
+        # WR-02 regression: pounds/euros suffixed magnitudes on a UTF-8 engine —
+        # the raw symbol must not survive and the amount speaks naturally.
+        out_gbp = clean_text("It cost £5bn total.", ascii_only=False)
+        assert "£" not in out_gbp
+        assert "5 billion pounds" in out_gbp
+
+        out_eur = clean_text("It cost €5k total.", ascii_only=False)
+        assert "€" not in out_eur
+        assert "5 thousand euros" in out_eur
+
+    def test_magnitude_suffix_decimal_dollars(self):
+        # WR-02 regression: a decimal magnitude ($1.2bn) converts cleanly too.
+        out = clean_text("Revenue hit $1.2bn this year.", ascii_only=True)
+        assert "$" not in out
+        assert "1.2 billion dollars" in out
+
+    def test_bare_currency_forms_still_work(self):
+        # WR-02 guard: the existing bare forms must keep working after the suffix
+        # extension (no symbol left, no spurious magnitude word).
+        out = clean_text("Items: $5, £10 and €20 here.", ascii_only=False)
+        assert "5 dollars" in out
+        assert "10 pounds" in out
+        assert "20 euros" in out
+        for sym in ("$", "£", "€"):
+            assert sym not in out
+        for word in ("thousand", "million", "billion"):
+            assert word not in out
+
 
 class TestPercentNormalization:
     """Percent symbol -> 'percent', digits preserved (CLEAN-06)."""

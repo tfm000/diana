@@ -168,13 +168,39 @@ def _simplify_latex_inline(text: str) -> str:
     return text
 
 
+# Currency symbol → spoken plural name, shared by the bare and magnitude-suffix
+# currency passes so the two stay in sync.
+_CURRENCY_WORD = {"$": "dollars", "£": "pounds", "€": "euros"}
+
+# Magnitude suffix → spoken scale word (WR-02). Lowercased for lookup so $5M / $5BN
+# convert the same as $5m / $5bn.
+_MAGNITUDE_WORD = {"k": "thousand", "m": "million", "b": "billion", "bn": "billion"}
+
+# A currency amount with a magnitude suffix: a symbol, a (possibly grouped,
+# possibly decimal) number, then k/m/b/bn — e.g. "$5m", "£5bn", "€5k", "$1.2bn".
+# The bare currency patterns end in `\b`, which never matches between the digit
+# and a trailing letter (5|m), so without this pass the symbol leaks to TTS. The
+# suffix alternation lists `bn` before `b` so "$5bn" consumes the whole "bn", and
+# the trailing `\b` keeps "$5media" from matching "$5m". Bounded: fixed symbol,
+# `\d+`/`(?:,\d{3})*`/`(?:\.\d+)?` runs only after the symbol, fixed suffix set —
+# no nested unbounded repetition (ReDoS, T-02-01). This pass runs BEFORE the cents
+# and bare passes so they cannot partially consume a suffixed amount (e.g. the
+# bare-dollar pass would otherwise turn "$1.2bn" into "1 dollars.2bn").
+_CURRENCY_MAGNITUDE_RE = re.compile(
+    r"([$£€])(\d+(?:,\d{3})*(?:\.\d+)?)(bn|b|m|k)\b",
+    re.IGNORECASE,
+)
+
+
 def _normalize_currency_percent(text: str) -> str:
     """Currency/percent symbols → spoken words, digits preserved (CLEAN-06).
 
-    Substitution order matters: the cents form ($5.50) must run before the bare
-    dollar form ($5) so "$5.50" is not partially consumed as "$5". Only the
-    SYMBOL becomes a word — the digits are kept verbatim (no number-to-words;
-    VNEXT-03 stays deferred and the TTS engine vocalizes "5", "50", etc.).
+    Substitution order matters: the magnitude-suffix form ($5m/$1.2bn) must run
+    FIRST so the later bare/cents passes cannot partially consume it; then the
+    cents form ($5.50) before the bare dollar form ($5) so "$5.50" is not eaten as
+    "$5". Only the SYMBOL (and any k/m/bn magnitude) becomes a word — the digits
+    are kept verbatim (no number-to-words; VNEXT-03 stays deferred and the TTS
+    engine vocalizes "5", "50", etc.).
 
     This MUST run BEFORE _remove_inline_math (the single load-bearing ordering
     constraint of the phase): the old inline-math remover paired the first '$'
@@ -182,7 +208,14 @@ def _normalize_currency_percent(text: str) -> str:
     first removes every '$', so nothing math-shaped is left to mis-pair.
     Pure: re-only, no logging/exceptions.
     """
-    text = re.sub(r"\$(\d+)\.(\d{2})\b", r"\1 dollars and \2 cents", text)  # cents first
+    def magnitude_repl(m: re.Match) -> str:
+        symbol, number, suffix = m.group(1), m.group(2), m.group(3).lower()
+        # "5 million dollars" / "1.2 billion pounds" — magnitude before currency,
+        # no leftover symbol. Digits preserved verbatim (no number-to-words).
+        return f"{number} {_MAGNITUDE_WORD[suffix]} {_CURRENCY_WORD[symbol]}"
+
+    text = _CURRENCY_MAGNITUDE_RE.sub(magnitude_repl, text)            # suffix first
+    text = re.sub(r"\$(\d+)\.(\d{2})\b", r"\1 dollars and \2 cents", text)  # cents
     text = re.sub(r"\$(\d+(?:,\d{3})*)\b", r"\1 dollars", text)
     text = re.sub(r"(\d+(?:\.\d+)?)\s*%", r"\1 percent", text)
     text = re.sub(r"£(\d+(?:,\d{3})*)\b", r"\1 pounds", text)
