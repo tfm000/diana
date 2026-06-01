@@ -247,6 +247,104 @@ class TestUrlStripping:
         assert "https" not in result
 
 
+class TestCodeBlockRemoval:
+    """Fenced + contiguous-indented code blocks are removed (CLEAN-05).
+
+    Conservative per CLEAN-07: a fenced (```) block is always removed (the fence
+    markers are unambiguous), a CONTIGUOUS run of 2+ indented (4-space/tab) lines
+    is removed as a real code block, but a SINGLE indented line is KEPT — it is
+    far more likely indented prose (a quote, a wrapped sentence, a hanging indent)
+    than code. Code-block removal runs BEFORE table/chart noise detection so
+    symbol-heavy short code lines do not false-trigger those detectors.
+    """
+
+    def test_fenced_block_removed(self):
+        out = clean_text(
+            "Intro line.\n\n```\ncode = 1\nprint(code)\n```\n\nOutro line."
+        )
+        assert "code = 1" not in out
+        assert "print" not in out
+        assert "Intro line" in out
+        assert "Outro line" in out
+
+    def test_fenced_block_with_language_tag_removed(self):
+        out = clean_text(
+            "Before.\n\n```python\nx = compute()\nreturn x\n```\n\nAfter."
+        )
+        assert "compute()" not in out
+        assert "return x" not in out
+        assert "Before" in out
+        assert "After" in out
+
+    def test_contiguous_indented_block_removed(self):
+        out = clean_text(
+            "Here is code:\n    def f():\n        return 1\nDone."
+        )
+        assert "def f()" not in out
+        assert "return 1" not in out
+        assert "Here is code" in out
+        assert "Done" in out
+
+    def test_single_indented_prose_line_kept(self):
+        # The CLEAN-07 over-strip guard: one indented line is prose, not code.
+        out = clean_text(
+            "Normal line here.\n    This indented sentence is prose, not code.\n"
+            "Next line here."
+        )
+        assert "This indented sentence is prose" in out
+        assert "Normal line here" in out
+        assert "Next line here" in out
+
+    def test_tab_indented_block_removed(self):
+        out = clean_text("Snippet:\n\ta = 1\n\tb = 2\nEnd.")
+        assert "a = 1" not in out
+        assert "b = 2" not in out
+        assert "Snippet" in out
+        assert "End" in out
+
+
+class TestListMarkerStrip:
+    """List markers are stripped while the item PROSE is kept (CLEAN-05).
+
+    Runs AFTER chart-fragment detection so the markers are still visible for the
+    chart/heading protection. The line is never deleted — only the leading marker
+    prefix (- , * , + , 1. , a) ) is removed and the item text survives.
+    """
+
+    def test_dash_marker_stripped_text_kept(self):
+        out = clean_text("- Apples\n- Oranges")
+        assert "Apples" in out
+        assert "Oranges" in out
+        assert "- Apples" not in out
+
+    def test_star_and_plus_markers_stripped(self):
+        out = clean_text("* First item here.\n+ Second item here.")
+        assert "First item here" in out
+        assert "Second item here" in out
+        assert "* First" not in out
+        assert "+ Second" not in out
+
+    def test_ordered_numeric_markers_stripped(self):
+        out = clean_text("1. First step\n2. Second step")
+        assert "First step" in out
+        assert "Second step" in out
+        assert "1. First" not in out
+        assert "2. Second" not in out
+
+    def test_ordered_alpha_markers_stripped(self):
+        out = clean_text("a) Alpha choice\nB) Beta choice")
+        assert "Alpha choice" in out
+        assert "Beta choice" in out
+        assert "a) Alpha" not in out
+        assert "B) Beta" not in out
+
+    def test_non_list_prose_unchanged(self):
+        # A hyphenated/decimal sentence is not a list marker.
+        text = "Well-known results show 3.5 cm of growth."
+        out = clean_text(text)
+        assert "Well-known results show" in out
+
+
 class TestTableRemoval:
     def test_pipe_table(self):
         text = "Before.\n| Col1 | Col2 | Col3 |\n|------|------|------|\n| a | b | c |\nAfter."

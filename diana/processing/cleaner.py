@@ -89,8 +89,14 @@ def clean_text(text: str, *, source_format: str | None = None, ascii_only: bool 
     text = _remove_inline_math(text)
     text = _remove_citations(text)
     text = _remove_figure_table_refs(text)
+    # Code blocks MUST come out BEFORE table/chart detection: code lines are
+    # short and symbol-heavy and would false-trigger those noise detectors.
+    text = _remove_code_blocks(text)
     text = _remove_tables(text)
     text = _remove_chart_fragments(text)
+    # List-marker strip runs AFTER chart detection so the markers are still
+    # visible for the chart/heading protection; it keeps the item prose.
+    text = _strip_list_markers(text)
     text = _remove_common_footers(text)
     # Abbreviations expand BEFORE URL/email stripping so dotted tokens
     # (e.g./i.e./U.S.) are already words before any later URL pass.
@@ -226,6 +232,49 @@ def _remove_figure_table_refs(text: str) -> str:
     return text
 
 
+def _remove_code_blocks(text: str) -> str:
+    """Remove fenced and clearly-indented code blocks — unspeakable (CLEAN-05).
+
+    Two passes, both conservative per CLEAN-07:
+
+    1. Fenced blocks delimited by triple-backtick fences are removed regardless
+       of length (the fence markers are unambiguous). The span matcher is a
+       BOUNDED inner match — ``` then a negated-fence run then ``` — not a nested
+       unbounded `.*`, so there is no catastrophic backtracking (ReDoS, T-02-01).
+       Mirrors `_remove_latex_display`'s DOTALL-span idiom.
+    2. Indented code: a CONTIGUOUS run of 2+ lines each indented by 4+ spaces or
+       a leading tab is dropped (a real code block). A SINGLE indented line is
+       KEPT — it is far more likely indented prose (a quote, a wrapped sentence,
+       a hanging indent) than code. Line-oriented split/keep/join, mirroring
+       `_remove_tables`. The anchored `^( {4,}|\\t)` test is bounded (no nested
+       unbounded repetition).
+
+    Runs BEFORE table/chart detection (stage step 8): code lines are short and
+    symbol-heavy and would false-trigger those noise detectors. Pure: re-only,
+    no logging/exceptions.
+    """
+    # 1. Fenced blocks (``` ... ```). Bounded inner: any run of non-backtick
+    # chars, or a backtick not part of a closing fence — never nested unbounded.
+    text = re.sub(r"```[^\n`]*\n(?:[^`]|`(?!``))*```", "", text, flags=re.DOTALL)
+
+    # 2. Contiguous indented (4+ spaces or tab) runs of 2+ lines.
+    lines = text.split("\n")
+    keep = [True] * len(lines)
+    i = 0
+    while i < len(lines):
+        if re.match(r"^( {4,}|\t)", lines[i]):
+            j = i
+            while j < len(lines) and re.match(r"^( {4,}|\t)", lines[j]):
+                j += 1
+            if j - i >= 2:  # real code block (>=2 contiguous indented lines)
+                for k in range(i, j):
+                    keep[k] = False
+            i = j
+        else:
+            i += 1
+    return "\n".join(line for line, k in zip(lines, keep) if k)
+
+
 def _is_structured_row(s: str) -> bool:
     """Whether a stripped line looks like one row of a structured table.
 
@@ -338,6 +387,34 @@ def _remove_chart_fragments(text: str) -> str:
                 cleaned.append(lines[i])
                 i += 1
     return "\n".join(cleaned)
+
+
+def _strip_list_markers(text: str) -> str:
+    """Strip a leading list marker, keep the item PROSE (CLEAN-05).
+
+    Line-oriented. Removes a leading bullet (`- `, `* `, `+ `), ordered-numeric
+    (`1. `/`12. `), or ordered-alpha (`a) `/`A) `) marker and keeps the remaining
+    item text — the line is NEVER deleted. Bounded anchored patterns
+    (`^\\s*[-*+]\\s+`, `^\\s*\\d{1,3}[.)]\\s+`, `^\\s*[A-Za-z][.)]\\s+`); the
+    `\\d{1,3}` and single-letter classes mean no nested unbounded repetition
+    (ReDoS, T-02-01).
+
+    Runs AFTER `_remove_chart_fragments` (hard constraint): the chart/heading
+    protection in 02-01 must still see the markers to protect list items —
+    stripping them earlier would blind that protection. Pure: re-only, no
+    logging/exceptions.
+    """
+    lines = text.split("\n")
+    out = []
+    for line in lines:
+        # Bullet, then ordered-numeric, then ordered-alpha — first match wins.
+        stripped = re.sub(r"^\s*[-*+]\s+", "", line)
+        if stripped == line:
+            stripped = re.sub(r"^\s*\d{1,3}[.)]\s+", "", line)
+        if stripped == line:
+            stripped = re.sub(r"^\s*[A-Za-z][.)]\s+", "", line)
+        out.append(stripped)
+    return "\n".join(out)
 
 
 def _remove_common_footers(text: str) -> str:
