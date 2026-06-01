@@ -94,30 +94,53 @@ Plans:
 **Goal**: A fresh install makes audio out of the box with zero downloads, using the operating system's own voices as the default engine on both macOS and Windows.
 **Mode:** mvp
 **Depends on**: Phase 1
-**Requirements**: NATIVE-01, NATIVE-02, NATIVE-03, NATIVE-04
+**Requirements**: NATIVE-01, NATIVE-02, NATIVE-03, NATIVE-04, NATIVE-05
 **Success Criteria** (what must be TRUE):
 
   1. On a fresh install with nothing downloaded, the user can convert a document to audio using a native OS voice
   2. `NativeOSEngine` is preselected as the default engine, using `say` on macOS and WinRT neural voices on Windows (SAPI5 only as a visible last-resort fallback, never `edge-tts`)
   3. The voice list reflects the voices actually installed on the user's OS, enumerated dynamically on both platforms
   4. Synthesis runs on the worker without freezing the dashboard, and no cloud call is made
+  5. Enumerated voices carry descriptive attributes (language incl. bilingual, quality tier, gender) — macOS prelabelled, Windows best-effort from WinRT metadata — and the picker lets the user filter by language/quality and search by name, defaulting to the OS system voice with best-quality voices preferred
 
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — Wave 0 test scaffolding: pytest-asyncio + asyncio_mode, captured `say -v '?'` fixture, RED/xfail scaffolds for the native engine + macOS parser (Nyquist contract for NATIVE-01..05)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 03-02-PLAN.md — macOS data layer: extend `TTSVoice` with tier+bilingual (defaults keep kokoro/piper valid), `native_voices_macos.py` `say -v '?'` parser + curated prelabel map (NATIVE-03, NATIVE-05)
+
+**Wave 3** *(blocked on Wave 2 — shared `native_os_engine.py`/`base.py`)*
+
+- [ ] 03-03-PLAN.md — macOS engine + registry + default flip: `NativeOSEngine` (macOS `say` synth, WinRT stubbed), dynamic `get_engine_voices` branch, default engine→native_os, the two known test-break fixes (NATIVE-01, NATIVE-03, NATIVE-04)
+
+**Wave 4** *(blocked on Wave 3 — shared `native_os_engine.py`)*
+
+- [ ] 03-04-PLAN.md — Voice-attributes UI: pure `filter_voices`/ordering/default-resolution helpers + Upload/Settings language+quality filters, name search, per-engine default voice, dismissible OS-voice download hint (NATIVE-05) — *has blocking human-verify checkpoint*
+
+**Wave 5** *(blocked on Wave 4 — shared `native_os_engine.py`)*
+
+- [ ] 03-05-PLAN.md — Windows WinRT branch: platform-gate the four `winrt-*` deps (`sys_platform=='win32'`), implement WinRT synth/enum/default + SAPI5-only note (mock-tested on macOS), Windows UAT pinning assumption A1 (NATIVE-02, NATIVE-03, NATIVE-04, NATIVE-05) — *has blocking Windows UAT checkpoint*
+
 **UI hint**: yes
-**Research note**: Windows WinRT `SpeechSynthesizer` bindings and OneCore neural-voice enumeration are MEDIUM confidence — flag this phase for `/gsd:plan-phase --research-phase` to re-verify the projection package names, async stream-to-WAV path, and offline voice availability on a clean Windows 10/11 image.
+**Research note** *(addressed by 03-RESEARCH.md)*: Windows WinRT `SpeechSynthesizer` bindings + OneCore enumeration were re-verified at the doc/package level (`winrt-Windows.Media.SpeechSynthesis` 3.2.1, modular PyWinRT). The one residual MEDIUM-confidence item — exact PyWinRT attribute spelling (A1) — is pinned by the 03-05 Windows UAT.
 
 ### Phase 4: Engine Management & Voice Catalog
 
 **Goal**: Users can discover, install, preview, and use additional voices entirely in-app — powered by a shared on-demand model-download layer that is proven end-to-end by the Piper voice catalog before any heavy engine relies on it.
 **Mode:** mvp
-**Depends on**: Phase 1 (per-user storage), Phase 3 (dynamic voice-listing path)
-**Requirements**: ENGINE-01, ENGINE-02, ENGINE-03, ENGINE-04, VOICE-01, VOICE-02, VOICE-03, VOICE-04, VOICE-05
+**Depends on**: Phase 1 (per-user storage), Phase 3 (dynamic voice-listing + voice-attribute layer)
+**Requirements**: ENGINE-01, ENGINE-02, ENGINE-03, ENGINE-04, VOICE-01, VOICE-02, VOICE-03, VOICE-04, VOICE-05, VOICE-06
 **Success Criteria** (what must be TRUE):
 
   1. The engine picker shows each engine's install state and download footprint (e.g. "Ready" / "~2.4 GB, downloads on first use") without triggering heavy imports
   2. User can browse the Piper voice catalog, download a voice with visible byte progress and a disk-space pre-check, and have an interrupted download resume rather than restart
   3. User can preview any voice (pre-recorded sample if not installed, live synthesis if installed) and select a specific voice per job
   4. User can manually import a downloaded Piper voice (`.onnx` + `.onnx.json`) through the UI, and all downloads land in the per-user cache triggered only from the UI — never inside a running job
+  5. Building on Phase 3's voice-attribute layer, the user can edit a voice's labels or add custom ones (persisted across restart, UI-only), and browse/select voices across engines in one place
 
 **Plans**: TBD
 **UI hint**: yes
@@ -178,7 +201,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 |-------|----------------|--------|-----------|
 | 1. Foundation & Privacy Toggle | 4/4 | In Progress (all plans implemented; awaiting phase verifier / roadmap-update pass) | - |
 | 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
-| 3. Native OS TTS (New Default) | 0/TBD | Not started | - |
+| 3. Native OS TTS (New Default) | 0/5 | Not started | - |
 | 4. Engine Management & Voice Catalog | 0/TBD | Not started | - |
 | 5. Heavy Opt-In Engines | 0/TBD | Not started | - |
 | 6. Packaging & First-Class Windows | 0/TBD | Not started | - |
