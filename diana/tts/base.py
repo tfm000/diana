@@ -38,6 +38,16 @@ class TTSEngine(Protocol):
         """Return available voices for this engine."""
         ...
 
+    def default_voice(self) -> str:
+        """Return this engine's default voice id (optional).
+
+        For engines whose default is the OS system voice (native_os), this is an
+        empty string — synthesis with an empty id uses the OS default. Engines with
+        a fixed default need not implement it; callers guard with
+        getattr(engine, "default_voice", None) since this Protocol is structural.
+        """
+        ...
+
     def shutdown(self) -> None:
         """Release resources."""
         ...
