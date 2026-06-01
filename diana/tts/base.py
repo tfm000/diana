@@ -9,6 +9,8 @@ class TTSVoice:
     name: str
     language: str
     gender: str
+    tier: str = "standard"   # quality tier: novelty | compact | enhanced | standard/neural
+    bilingual: bool = False  # True if the voice speaks multiple/bilingual languages
 
 
 class TTSEngine(Protocol):
