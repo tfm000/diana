@@ -1,0 +1,5 @@
+Figure 1: An overview of the architecture is shown.
+
+The rendering note image1.png was left by the converter.
+
+Readers may consult Figure 2 for the full layout.

@@ -65,10 +65,13 @@ _SNAPSHOTS = [
     ("urls_emails_guard", "txt", True),
     # figures (CLEAN-01, 02-04): caption-keep (label+colon dropped, prose kept),
     # inline reference removal with dangling-grammar repair, and residual
-    # image-filename strip. Selected by `pytest -k figures`; also swept by the
-    # cross-stage invariant run (which now asserts the no-figure-token removal
-    # invariant registered this wave).
+    # image-filename strip. Two flavors: a PDF/ASCII case and an EPUB/UTF-8 case
+    # (the EPUB image-artifact path runs on the ascii_only=False side, the way a
+    # UTF-8-capable engine like Piper sees EPUB text). Selected by
+    # `pytest -k figures`; also swept by the cross-stage invariant run (which now
+    # asserts the no-figure-token removal invariant registered this wave).
     ("figures", "pdf", True),
+    ("figures_epub", "epub", False),
     # footnotes (CLEAN-03, 02-04): superscript marker removal, `[n]` marker
     # removal (via _remove_citations), best-effort footnote-body block drop, and
     # numbered-list preservation. Selected by `pytest -k footnotes`; also swept
@@ -230,7 +233,7 @@ class TestSnapshotsCodeListsUrls:
         _invariants(out, ascii_only=ascii_only)
 
 
-_FIGURES = [s for s in _SNAPSHOTS if s[0] == "figures"]
+_FIGURES = [s for s in _SNAPSHOTS if s[0].startswith("figures")]
 
 
 class TestSnapshotsFigures:

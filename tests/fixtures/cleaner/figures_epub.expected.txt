@@ -1,0 +1,5 @@
+An overview of the architecture is shown.
+
+The rendering note was left by the converter.
+
+Readers may consult for the full layout.
