@@ -653,6 +653,40 @@ class TestListMarkerStrip:
         out = clean_text(text)
         assert "Well-known results show" in out
 
+    def test_dotted_capital_initial_kept(self):
+        # CR-02 regression: a line beginning with a single capital letter + period
+        # is far more likely an author initial than an "a."-style list marker, so
+        # the dotted-capital form must NOT be stripped — "A." stays with the name.
+        out = clean_text("A. Einstein discovered relativity.")
+        assert "A. Einstein discovered relativity" in out
+        assert "Einstein discovered relativity" in out
+
+    def test_author_initial_block_kept(self):
+        # CR-02 regression: an author/byline block of dotted-capital initials must
+        # keep every initial (none mistaken for a list marker).
+        out = clean_text("Authors:\nA. Smith\nB. Jones\nare the contributors.")
+        assert "A. Smith" in out
+        assert "B. Jones" in out
+
+    def test_dotted_lowercase_list_marker_still_stripped(self):
+        # CR-02 paired assertion: a genuine LOWERCASE dotted list marker ("a. ")
+        # is still stripped (initials are conventionally uppercase, so the
+        # lowercase dotted form is safe to treat as a list marker).
+        out = clean_text("a. first item here\nb. second item here")
+        assert "first item here" in out
+        assert "second item here" in out
+        assert "a. first" not in out
+        assert "b. second" not in out
+
+    def test_paren_alpha_list_markers_still_stripped(self):
+        # CR-02 paired assertion: the paren form "a)"/"A)" is rarely an initial and
+        # is still stripped for BOTH cases (keeps the existing alpha-list behavior).
+        out = clean_text("a) Alpha choice here\nB) Beta choice here")
+        assert "Alpha choice here" in out
+        assert "Beta choice here" in out
+        assert "a) Alpha" not in out
+        assert "B) Beta" not in out
+
 
 class TestTableRemoval:
     def test_pipe_table(self):

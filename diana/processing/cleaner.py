@@ -601,11 +601,16 @@ def _strip_list_markers(text: str) -> str:
     """Strip a leading list marker, keep the item PROSE (CLEAN-05).
 
     Line-oriented. Removes a leading bullet (`- `, `* `, `+ `), ordered-numeric
-    (`1. `/`12. `), or ordered-alpha (`a) `/`A) `) marker and keeps the remaining
-    item text — the line is NEVER deleted. Bounded anchored patterns
-    (`^\\s*[-*+]\\s+`, `^\\s*\\d{1,3}[.)]\\s+`, `^\\s*[A-Za-z][.)]\\s+`); the
-    `\\d{1,3}` and single-letter classes mean no nested unbounded repetition
-    (ReDoS, T-02-01).
+    (`1. `/`12. `), or ordered-alpha marker and keeps the remaining item text —
+    the line is NEVER deleted. The ordered-alpha rule is deliberately narrow
+    (CR-02): the DOTTED form is stripped only for a LOWERCASE letter
+    (`^\\s*[a-z]\\.\\s+`), because a dotted CAPITAL ("A. Einstein") is far more
+    likely an author initial or an outline numeral than an "a."-style list item —
+    stripping it would corrupt the spoken name. The PAREN form keeps both cases
+    (`^\\s*[A-Za-z]\\)\\s+`): "a)"/"A)" is rarely an initial. Bounded anchored
+    patterns (`^\\s*[-*+]\\s+`, `^\\s*\\d{1,3}[.)]\\s+`,
+    `^\\s*(?:[a-z]\\.|[A-Za-z]\\))\\s+`); the `\\d{1,3}` and single-letter classes
+    mean no nested unbounded repetition (ReDoS, T-02-01).
 
     Runs AFTER `_remove_chart_fragments` (hard constraint): the chart/heading
     protection in 02-01 must still see the markers to protect list items —
@@ -620,7 +625,9 @@ def _strip_list_markers(text: str) -> str:
         if stripped == line:
             stripped = re.sub(r"^\s*\d{1,3}[.)]\s+", "", line)
         if stripped == line:
-            stripped = re.sub(r"^\s*[A-Za-z][.)]\s+", "", line)
+            # Lowercase dotted (a. ) OR either-case paren (a) / A) ) — a dotted
+            # CAPITAL is left intact so author initials ("A. Einstein") survive.
+            stripped = re.sub(r"^\s*(?:[a-z]\.|[A-Za-z]\))\s+", "", line)
         out.append(stripped)
     return "\n".join(out)
 
