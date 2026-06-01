@@ -102,6 +102,7 @@ def clean_text(text: str, *, source_format: str | None = None, ascii_only: bool 
     # (e.g./i.e./U.S.) are already words before any later URL pass.
     text = _expand_abbreviations(text)
     text = _strip_urls(text)
+    text = _strip_emails(text)
     text = _normalize_unicode(text)
     text = _remove_repeated_lines(text)
     text = _remove_page_numbers(text, source_format)
@@ -462,9 +463,38 @@ def _expand_abbreviations(text: str) -> str:
 
 
 def _strip_urls(text: str) -> str:
-    """Remove URLs."""
+    """Remove URLs entirely — scheme-prefixed and www.-prefixed (CLEAN-05).
+
+    Two bounded `re.sub` passes: `https?://\\S+` (existing) and `\\bwww\\.\\S+`
+    (new). The `\\S+` runs only AFTER a required scheme or `www.` prefix, so
+    there is no nested unbounded repetition (ReDoS, T-02-01). URLs are removed,
+    NOT replaced with a "link" token (Decision 4).
+
+    The structural guard for dotted prose is the required prefix: `U.S.` (no
+    scheme, no `www.`) and `e.g.` (already expanded to "for example" by
+    _expand_abbreviations, which runs BEFORE this) never match. Pure.
+    """
     text = re.sub(r"https?://\S+", "", text)
+    text = re.sub(r"\bwww\.\S+", "", text)
     return text
+
+
+# Clear email matcher: a bounded, anchored shape (negated/limited classes, no
+# nested unbounded repetition) — ReDoS-safe, T-02-01. The required '@' is the
+# structural guard: dotted prose tokens like U.S./e.g. (no '@') never match.
+_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
+
+
+def _strip_emails(text: str) -> str:
+    """Remove clear email addresses entirely (CLEAN-05).
+
+    Uses the bounded module-level `_EMAIL_RE` (`[\\w.+-]+@[\\w-]+\\.[\\w.-]+`).
+    Runs at orchestrator stage 13 alongside `_strip_urls`, AFTER
+    `_expand_abbreviations` (stage 12). Removed, NOT replaced with a "link" token
+    (Decision 4). The required '@' means dotted prose (U.S., e.g.) is
+    structurally safe — it cannot match. Pure.
+    """
+    return _EMAIL_RE.sub("", text)
 
 
 def _normalize_unicode(text: str) -> str:

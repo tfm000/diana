@@ -246,6 +246,65 @@ class TestUrlStripping:
         result = clean_text("See https://example.com/path?q=1 here.")
         assert "https" not in result
 
+    def test_www_url_removed(self):
+        # www.-prefixed tokens are removed too (no scheme required) (CLEAN-05).
+        result = clean_text("Browse www.example.org today.")
+        assert "www." not in result
+        assert "example.org" not in result
+        assert "today" in result
+
+    def test_url_removed_not_replaced_with_link(self):
+        # Decision 4: remove entirely, never substitute a "link" token.
+        result = clean_text("See https://example.com here.")
+        assert "link" not in result.lower()
+
+    def test_us_abbreviation_not_mistaken_for_url(self):
+        # "U.S." has no scheme/www. prefix and no '@' -> the URL/email shapes
+        # do not match it; it must survive the URL/email pass.
+        result = clean_text("The U.S. economy grew.")
+        assert "U.S." in result
+
+    def test_eg_expansion_survives_url_pass(self):
+        # e.g. is expanded to "for example" by 02-02 BEFORE this pass; assert the
+        # expansion was not eaten by the URL/email stripping.
+        result = clean_text("Many fruits, e.g. apples, are sweet.")
+        assert "for example" in result
+
+
+class TestEmailStripping:
+    """Clear email addresses are removed entirely (CLEAN-05).
+
+    The email shape requires an '@', so dotted prose tokens like U.S./e.g. (which
+    have no '@') are structurally safe. Bounded anchored pattern (negated classes,
+    no nested unbounded repetition) — ReDoS mitigation T-02-01.
+    """
+
+    def test_email_removed(self):
+        result = clean_text("Mail me at bob@test.com today.")
+        assert "@" not in result
+        assert "bob@test.com" not in result
+        assert "today" in result
+
+    def test_dotted_email_removed(self):
+        result = clean_text("Contact jane.doe+news@sub.example.co.uk please.")
+        assert "@" not in result
+        assert "example" not in result
+        assert "please" in result
+
+    def test_email_not_replaced_with_link(self):
+        result = clean_text("Write to a@b.com now.")
+        assert "link" not in result.lower()
+
+    def test_url_and_email_together(self):
+        result = clean_text(
+            "See https://example.com/x and www.foo.org and mail me at "
+            "bob@test.com today."
+        )
+        assert "http" not in result
+        assert "www." not in result
+        assert "@" not in result
+        assert "today" in result
+
 
 class TestCodeBlockRemoval:
     """Fenced + contiguous-indented code blocks are removed (CLEAN-05).

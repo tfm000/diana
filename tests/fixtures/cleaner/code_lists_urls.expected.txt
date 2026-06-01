@@ -1,0 +1,11 @@
+Here is the setup before the snippet.
+
+The shopping list:
+Apples
+Oranges
+First step
+Second step
+
+ This indented sentence is prose, not code, and must be kept.
+
+That concludes the example.

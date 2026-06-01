@@ -56,6 +56,13 @@ _SNAPSHOTS = [
     ("currency_dual", "txt", True),
     ("percent_normalize", "txt", True),
     ("abbreviations_expand", "txt", True),
+    # code_lists_urls (CLEAN-05, 02-03): code-block removal (fenced + contiguous
+    # indented), single-indented-prose keep, list-marker strip, and URL/email
+    # removal with the U.S./e.g. structural guard. Selected by
+    # `pytest -k code_lists_urls`; also swept by the cross-stage invariant run
+    # (which now asserts the no-URL/no-email removal invariant registered below).
+    ("code_lists_urls", "txt", True),
+    ("urls_emails_guard", "txt", True),
 ]
 
 # The CLEAN-06 fixture stems (the `-k normalization` selector resolves to this
@@ -88,10 +95,11 @@ def _invariants(out: str, *, ascii_only: bool = False) -> None:
 
     ----------------------------------------------------------------------------
     Wave N adds (extension point — each later slice appends its removal invariant
-    here AS IT IMPLEMENTS the stage; do NOT add these earlier or Wave-1 fixtures
-    that still carry the tokens will fail):
+    here AS IT IMPLEMENTS the stage; do NOT add these earlier or earlier-wave
+    fixtures that still carry the tokens will fail):
       - 02-03 (CLEAN-05): no URL / no "www." / no "<user>@<host>.<tld>" email
-      - 02-04 (CLEAN-01/03): no figure/table reference token
+            — REGISTERED below (this wave owns it); holds across all snapshots.
+      - 02-04 (CLEAN-01/03): no figure/table reference token  [still deferred]
             re.search(r"\\b(Figure|Table|Fig\\.|Tab\\.)\\s*\\d", out)
       - 02-04 (CLEAN-01): no LaTeX backslash / brace residue, if a fixture carries it
     ----------------------------------------------------------------------------
@@ -102,6 +110,14 @@ def _invariants(out: str, *, ascii_only: bool = False) -> None:
     assert "( )" not in out, f"empty parens: {out!r}"
     assert "  " not in out, f"double space: {out!r}"
     assert "\n\n\n" not in out, f"triple newline: {out!r}"
+
+    # Wave 3 adds (02-03, CLEAN-05): no surviving URL or email. This wave owns the
+    # URL/email removal stages, so it registers the removal invariant here. It
+    # holds across ALL committed snapshot inputs (no prior fixture planted a
+    # URL/email). The figure/footnote-token invariant stays deferred to 02-04.
+    assert "http" not in out, f"URL leaked: {out!r}"
+    assert "www." not in out, f"www. URL leaked: {out!r}"
+    assert not re.search(r"\S+@\S+\.\S+", out), f"email leaked: {out!r}"
 
     # Engine-conditional ASCII path.
     if ascii_only:
@@ -165,8 +181,37 @@ class TestSnapshotsNormalization:
         _invariants(out, ascii_only=ascii_only)
 
 
+_CODE_LISTS_URLS = [
+    s for s in _SNAPSHOTS if s[0] in ("code_lists_urls", "urls_emails_guard")
+]
+
+
+class TestSnapshotsCodeListsUrls:
+    """Exact snapshot match for the CLEAN-05 code/lists/URLs fixtures (02-03).
+
+    The class name carries the `code_lists_urls` token so the VALIDATION selector
+    `pytest tests/test_cleaner_corpus.py -k code_lists_urls` resolves here. Covers
+    fenced + contiguous-indented code removal, the single-indented-prose keep,
+    list-marker stripping (item text preserved), http/www/email removal, and the
+    U.S./e.g. structural guard (kept because they carry no scheme/www./'@').
+    """
+
+    @pytest.mark.parametrize("name, fmt, ascii_only", _CODE_LISTS_URLS)
+    def test_code_lists_urls_snapshot_exact(self, name, fmt, ascii_only):
+        inp, expected = _load_snapshot(name)
+        assert clean_text(inp, source_format=fmt, ascii_only=ascii_only) == expected
+
+    @pytest.mark.parametrize("name, fmt, ascii_only", _CODE_LISTS_URLS)
+    def test_code_lists_urls_invariants_hold(self, name, fmt, ascii_only):
+        # Cross-stage: the no-URL/no-email removal invariant (registered this
+        # wave) must hold for these fixtures, plus all earlier invariants.
+        inp, _ = _load_snapshot(name)
+        out = clean_text(inp, source_format=fmt, ascii_only=ascii_only)
+        _invariants(out, ascii_only=ascii_only)
+
+
 class TestInvariantsAcrossSnapshots:
-    """Run the Wave-1 invariant sweep over EVERY snapshot input (cross-stage coverage)."""
+    """Run the invariant sweep over EVERY snapshot input (cross-stage coverage)."""
 
     @pytest.mark.parametrize("name, fmt, ascii_only", _SNAPSHOTS)
     def test_invariants_hold(self, name, fmt, ascii_only):

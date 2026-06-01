@@ -1,0 +1,16 @@
+Here is the setup before the snippet.
+
+```python
+config = load()
+run(config)
+```
+
+The shopping list:
+- Apples
+- Oranges
+1. First step
+2. Second step
+
+    This indented sentence is prose, not code, and must be kept.
+
+That concludes the example.

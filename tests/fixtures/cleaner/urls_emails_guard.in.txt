@@ -1,0 +1,5 @@
+See https://example.com/x and www.foo.org for details.
+
+Mail me at bob@test.com or jane.doe+news@sub.example.co.uk today.
+
+The U.S. economy grew, e.g. last year.
