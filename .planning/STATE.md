@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-05-31T23:52:26.209Z"
-last_activity: 2026-05-31
+stopped_at: Completed 02-02-PLAN.md (spoken normalization — CLEAN-06)
+last_updated: "2026-06-01T00:01:27.028Z"
+last_activity: 2026-06-01
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 6
   percent: 14
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-29)
 ## Current Position
 
 Phase: 02 (rule-based-cleaner-overhaul) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
-Last activity: 2026-05-31
+Last activity: 2026-06-01
 
-Progress: [██████░░░░] 63%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [██████░░░░] 63%
 | Phase 01 P03 | ~3min impl (wall ~26h spanning checkpoint) | 4 tasks (3 auto + 1 blocking checkpoint) | 7 files (6 planned + 1 scope-expansion via deviation #1) |
 | Phase 01 P04 | ~5min impl (wall ~14h spanning checkpoint) | 3 tasks (2 auto + 1 blocking checkpoint) | 3 files (matches plan files_modified exactly; +1 unrelated Kokoro-paths fix attributed to 01-01, not counted here) |
 | Phase 02 P01 | 9min | 3 tasks | 19 files |
+| Phase 02 P02 | 4min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,10 @@ Recent decisions affecting current work:
 - [Phase 02]: clean_text widened to keyword-only (text, *, source_format=None, ascii_only=False) — clean break, no shim; default ascii_only=False (non-destructive); engine capability resolved at the pipeline call site via engine_is_ascii_only so cleaner.py stays diana.tts-free
 - [Phase 02]: chart-fragment removal requires a >=3 noise cluster to contain a short LABEL (refinement beyond RESEARCH's numeric-fraction predicate) so label-less year/number lists are preserved — keeps both X-axis-cluster removal and year-list preservation green
 - [Phase 02]: Wave-1 corpus invariants assert only preservation + basic structural; URL/email (02-03) and figure/footnote (02-04) removal invariants deferred to a documented '_invariants Wave N adds' extension point so later slices append their invariant as the stage lands
+- [Phase 02 plan 02]: Currency/percent symbol→word (_normalize_currency_percent) runs BEFORE the math-aware _remove_inline_math — the phase's load-bearing ordering: converting currency removes every $ first so "$5 and $10" both survive (the math-signal guard alone still destroys it because the inner "5 and " matches the signal). Digits are never spelled to words (no number-to-words; VNEXT-03 stays deferred).
+- [Phase 02 plan 02]: The buggy bare `re.sub(r"\$[^$]*?\$", "")` is replaced by a math-aware _remove_inline_math over a bounded module-level _INLINE_MATH_RE = re.compile(r"\$([^$\n]{1,200}?)\$") (ReDoS mitigation T-02-01; verified linear on 100k adversarial $-input). Stray-command/brace stripping was folded into the new helper so the LaTeX test classes stay green.
+- [Phase 02 plan 02]: Curated low-ambiguity _ABBREVIATIONS only (Dr./Mr./Mrs./Ms./Prof./e.g./i.e./etc./vs./approx./cf.); a (?<![A-Za-z]) lookbehind + the required trailing period prevent mid-word (Drone. stays) and bare-token (the word "Mr" stays) false matches. Ambiguous m/kg/St. are deferred to the engine. Expansion runs BEFORE URL stripping so dotted tokens (e.g./U.S.) are already words for 02-03.
+- [Phase 02 plan 02]: Per the incremental corpus contract, 5 normalization fixtures were added and run through the existing Wave-2 _invariants (cross-stage), but NO new removal invariant was registered — currency/abbreviation are transforms; no-URL/email stays 02-03, figure-token stays 02-04. Regression #3 flipped (95% → "95 percent").
 
 ### Pending Todos
 
@@ -107,6 +112,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-31T23:51:44.051Z
-Stopped at: Phase 2 context gathered
+Last session: 2026-06-01T00:01:05.416Z
+Stopped at: Completed 02-02-PLAN.md (spoken normalization — CLEAN-06)
 Resume file: None

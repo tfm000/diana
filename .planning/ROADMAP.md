@@ -77,7 +77,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 — same-file `cleaner.py`)*
 
-- [ ] 02-02-PLAN.md — Spoken normalization: currency/percent symbol→word run before the math-aware `$…$` remover (the proven-mandatory ordering), curated abbreviation expansion (CLEAN-06)
+- [x] 02-02-PLAN.md — Spoken normalization: currency/percent symbol→word run before the math-aware `$…$` remover (the proven-mandatory ordering), curated abbreviation expansion (CLEAN-06)
 
 **Wave 3** *(blocked on Wave 2 — same-file `cleaner.py`)*
 
@@ -177,7 +177,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Privacy Toggle | 4/4 | In Progress (all plans implemented; awaiting phase verifier / roadmap-update pass) | - |
-| 2. Rule-Based Cleaner Overhaul | 1/4 | In Progress|  |
+| 2. Rule-Based Cleaner Overhaul | 2/4 | In Progress|  |
 | 3. Native OS TTS (New Default) | 0/TBD | Not started | - |
 | 4. Engine Management & Voice Catalog | 0/TBD | Not started | - |
 | 5. Heavy Opt-In Engines | 0/TBD | Not started | - |
