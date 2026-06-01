@@ -349,12 +349,18 @@ def _remove_footnote_bodies(text: str) -> str:
 _FIG_LABEL = r"(?:Figure|Fig\.|Table|Tab\.|Equation|Eq\.|Algorithm|Alg\.)"
 
 # Caption: a label at the START of a segment (line start, or just after a
-# sentence terminator) followed by a number, a ':' or '.' delimiter, then a
-# capitalized word that begins real prose. The whole label+delimiter is stripped
-# and the trailing sentence kept. Anchored at a segment boundary so a mid-sentence
-# "Figure 3." (a reference) is NOT caught here. Bounded: fixed label + \d{1,4}.
+# sentence terminator) followed by a number, a ':' or '.' delimiter, then a word
+# that begins real prose. The whole label+delimiter is stripped and the trailing
+# sentence kept. The prose-start lookahead is `(?=[A-Za-z])` — case-INSENSITIVE
+# (WR-01): a lowercase caption ("Figure 3: the system processes input.") must
+# strip the label AND its colon too, otherwise the uppercase-only gate let the
+# lowercase case fall through to the reference branch, which removed just the
+# "Figure 3" token and left a dangling ": ". Requiring a following LETTER (not a
+# digit/space) still keeps a bare "Figure 3:" or "Figure 3: 5" out of the caption
+# branch. Anchored at a segment boundary so a mid-sentence "Figure 3." (a
+# reference) is NOT caught here. Bounded: fixed label + \d{1,4}.
 _CAPTION_RE = re.compile(
-    r"(?:(?<=^)|(?<=[.!?]\s))" + _FIG_LABEL + r"\s*\d{1,4}\s*[:.]\s+(?=[A-Z])",
+    r"(?:(?<=^)|(?<=[.!?]\s))" + _FIG_LABEL + r"\s*\d{1,4}\s*[:.]\s+(?=[A-Za-z])",
     re.MULTILINE,
 )
 

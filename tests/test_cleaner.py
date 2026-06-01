@@ -287,6 +287,39 @@ class TestFigureTableRefs:
         assert "Table 4" not in result
         assert not result.startswith(":")
 
+    def test_caption_lowercase_prose_no_dangling_colon(self):
+        # WR-01 regression: a caption whose prose starts LOWERCASE must still drop
+        # the label + colon cleanly — no dangling ": " artifact, prose retained.
+        # The old caption branch required an uppercase first word, so the lowercase
+        # case fell through to the reference branch and left the colon behind.
+        for fmt in ("pdf", "txt", "epub"):
+            result = clean_text(
+                "Figure 3: the system processes input.", source_format=fmt
+            )
+            assert ":" not in result, f"dangling colon for fmt={fmt}: {result!r}"
+            assert "the system processes input" in result
+            assert "Figure 3" not in result
+
+    def test_caption_lowercase_table_prose_no_dangling_colon(self):
+        # WR-01 regression: same for a Table caption with lowercase prose.
+        result = clean_text(
+            "Table 1: summary statistics shown below.", source_format="pdf"
+        )
+        assert ":" not in result
+        assert "summary statistics shown below" in result
+        assert "Table 1" not in result
+
+    def test_caption_lowercase_midsentence_no_dangling_colon(self):
+        # WR-01 regression: a lowercase caption after a sentence terminator must
+        # not leave a dangling " : " in the middle either.
+        result = clean_text(
+            "Intro. Figure 3: the lowercase caption follows.", source_format="pdf"
+        )
+        assert ":" not in result
+        assert "the lowercase caption follows" in result
+        assert "Figure 3" not in result
+        assert "Intro" in result
+
 
 class TestResidualImageArtifacts:
     """Residual EPUB/Markdown image artifacts are stripped (CLEAN-01).
