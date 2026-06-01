@@ -40,8 +40,8 @@ class PiperConfig:
 
 @dataclass
 class TTSConfig:
-    engine: str = "kokoro"
-    voice: str = "af_heart"
+    engine: str = "native_os"   # D-01: zero-download default (was "kokoro")
+    voice: str = ""             # native default = OS system default (was "af_heart", a kokoro id)
     speed: float = 1.0
     language: str = "en-us"
     kokoro: KokoroConfig = field(default_factory=KokoroConfig)

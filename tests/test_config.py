@@ -28,11 +28,19 @@ class TestEnvSubstitute:
 class TestLoadConfig:
     def test_defaults_when_no_file(self, tmp_path):
         config = load_config(tmp_path / "nonexistent.yaml")
-        assert config.tts.engine == "kokoro"
-        assert config.tts.voice == "af_heart"
+        # D-01: native_os is the zero-download default; its default voice is the
+        # OS system default (empty id), not the old kokoro "af_heart".
+        assert config.tts.engine == "native_os"
+        assert config.tts.voice == ""
         assert config.tts.speed == 1.0
         assert config.dashboard.theme == "device"
         assert config.processing.chunk_max_chars == 4000
+
+    def test_default_engine_is_native_os(self, tmp_path):
+        # NATIVE-01: a fresh config (no file) selects native_os so a stock install
+        # makes audio with zero downloads.
+        config = load_config(tmp_path / "nonexistent.yaml")
+        assert config.tts.engine == "native_os"
 
     def test_loads_from_yaml(self, tmp_path):
         yaml_file = tmp_path / "test.yaml"
