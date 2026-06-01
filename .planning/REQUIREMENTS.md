@@ -29,7 +29,7 @@ Requirements for this milestone. Each maps to a roadmap phase.
 - [x] **CLEAN-02**: Cleaner strips running headers/footers and page numbers (format-aware: PDF / EPUB / TXT)
 - [ ] **CLEAN-03**: Cleaner handles inline citations, footnote markers, and footnote-body blocks
 - [x] **CLEAN-04**: Cleaner linearizes or skips tables sensibly for speech
-- [ ] **CLEAN-05**: Cleaner handles code blocks, list markers, and URLs
+- [x] **CLEAN-05**: Cleaner handles code blocks, list markers, and URLs
 - [x] **CLEAN-06**: Cleaner normalizes numbers, currency, percentages, and common abbreviations for natural speech
 - [x] **CLEAN-07**: Existing over-stripping bugs fixed (short-line guard; non-ASCII text preserved for engines that support it)
 - [x] **CLEAN-08**: A golden-corpus regression test suite guards cleaner output quality
@@ -118,7 +118,7 @@ Each v1 requirement maps to exactly one phase.
 | CLEAN-02 | Phase 2 | Complete |
 | CLEAN-03 | Phase 2 | Pending |
 | CLEAN-04 | Phase 2 | Complete |
-| CLEAN-05 | Phase 2 | Pending |
+| CLEAN-05 | Phase 2 | Complete |
 | CLEAN-06 | Phase 2 | Complete |
 | CLEAN-07 | Phase 2 | Complete |
 | CLEAN-08 | Phase 2 | Complete |
