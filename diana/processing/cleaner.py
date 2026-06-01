@@ -88,6 +88,9 @@ def clean_text(text: str, *, source_format: str | None = None, ascii_only: bool 
     text = _normalize_currency_percent(text)
     text = _remove_inline_math(text)
     text = _remove_citations(text)
+    # Footnote bodies after citations/markers are gone (best-effort; protects
+    # numbered lists), before caption/reference handling.
+    text = _remove_footnote_bodies(text)
     # Captions keep their prose (label+colon dropped); inline references are
     # removed and the dangling grammar repaired; residual image-filename
     # artifacts stripped. Replaces the old blunt _remove_figure_table_refs.
@@ -216,15 +219,81 @@ def _remove_inline_math(text: str) -> str:
     return text
 
 
+# Superscript-digit footnote markers: U+00B9 (¹), U+00B2 (²), U+00B3 (³) and the
+# contiguous U+2070–U+2079 (⁰–⁹) block. These are NOT in the smart-quote/dash
+# replacements of _normalize_unicode, so for a UTF-8 engine they would otherwise
+# survive (only the Kokoro ASCII net would catch them). A bounded run (1..4) of
+# these characters immediately following a word/punctuation char is an inline
+# footnote marker and is removed for ALL engines. Bounded {1,4}, fixed codepoint
+# class — no nested unbounded repetition (ReDoS, T-02-01).
+_SUPERSCRIPT_MARKER_RE = re.compile(r"(?<=\w)[¹²³⁰-⁹]{1,4}")
+
+# Conservative best-effort footnote-body line (RESEARCH Open Q3): a marker-prefixed
+# line ('[n]' or 'n.'/'n)') that begins a capitalized citation-like sentence of
+# 20+ characters. SINGLE-LINE (no DOTALL); the '.{20,}' is bounded by line length,
+# anchored at both ends — no nested unbounded repetition (ReDoS, T-02-01). The
+# 20+-char gate is the disambiguator that keeps a SHORT numbered-list item
+# ('1. First item') from being mistaken for a footnote body.
+_FOOTNOTE_BODY_RE = re.compile(r"^\s*(?:\[\d{1,4}\]|\d{1,4}[.)])\s+[A-Z].{20,}$")
+
+
 def _remove_citations(text: str) -> str:
-    """Remove citation markers."""
+    """Remove citation markers (and inline superscript footnote markers).
+
+    Bracketed numbered/author-year and parenthetical author-year markers are
+    stripped as before (numbered-list protection intact — `1.`/`a)` list markers
+    never match a `[...]` bracket). Superscript-digit footnote markers are also
+    removed here (stage step 5, the marker area) so they vanish for ALL engines,
+    not just the ASCII net.
+    """
     # Numbered: [1], [1,2], [1-5], [1, 2, 3-5]
     text = re.sub(r"\[[\d,\s\-–]+\]", "", text)
     # Author-year in brackets: [Smith et al., 2020], [Smith 2020]
     text = re.sub(r"\[[A-Z][a-z]+(?:\s+et\s+al\.?)?,?\s*\d{4}[a-z]?\]", "", text)
     # Author-year in parens: (Smith et al., 2020)
     text = re.sub(r"\([A-Z][a-z]+(?:\s+et\s+al\.?)?,?\s*\d{4}[a-z]?\)", "", text)
+    # Superscript-digit inline footnote markers (¹ ² ³ ⁰-⁹) after a word.
+    text = _SUPERSCRIPT_MARKER_RE.sub("", text)
     return text
+
+
+def _remove_footnote_bodies(text: str) -> str:
+    """Drop best-effort footnote-body blocks (CLEAN-03), protecting numbered lists.
+
+    Honestly scoped per RESEARCH Open Q3: EPUB/TXT have no page model after
+    extraction, so footnote-body detection is best-effort. A line is dropped only
+    when ALL of:
+      - it matches the conservative pattern `^\\s*(?:\\[\\d+\\]|\\d+[.)])\\s+[A-Z].{20,}$`
+        (a marker-prefixed line starting a capitalized 20+-char citation), AND
+      - it has a PRECEDING BLANK LINE (or is at document start) — footnote blocks
+        sit below the body separated by a blank line, AND
+      - it is part of a block where EVERY line matches the pattern — a single
+        consecutive run of footnote-body lines. A multi-line numbered LIST of
+        short items never qualifies (the 20+-char gate), and the all-lines-match
+        rule keeps a list with one long item from dragging neighbours out.
+
+    Runs at stage step 6, AFTER `_remove_citations` (markers gone) and BEFORE
+    `_handle_captions_and_refs`. The `n.` body form survives the citation strip
+    (only `[...]` brackets are removed there), so it is still detectable. The
+    corpus pins only the committed cases. Pure: re-only, no logging/exceptions.
+    """
+    lines = text.split("\n")
+    keep = [True] * len(lines)
+    i = 0
+    while i < len(lines):
+        # A candidate footnote-body block must start after a blank line / doc top.
+        prev_blank = (i == 0) or (lines[i - 1].strip() == "")
+        if prev_blank and _FOOTNOTE_BODY_RE.match(lines[i]):
+            j = i
+            while j < len(lines) and _FOOTNOTE_BODY_RE.match(lines[j]):
+                j += 1
+            # Drop the whole contiguous footnote-body block.
+            for k in range(i, j):
+                keep[k] = False
+            i = j
+        else:
+            i += 1
+    return "\n".join(line for line, k in zip(lines, keep) if k)
 
 
 # Figure/table label kinds shared by the caption and reference branches. Kept as

@@ -1,0 +1,8 @@
+The headline claim is well supported by the underlying evidence.
+
+A second observation follows from the same dataset.
+
+The recommended steps are:
+Review the inputs
+Run the analysis
+Record the outputs

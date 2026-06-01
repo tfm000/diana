@@ -1,0 +1,11 @@
+The headline claim is well supported¹ by the underlying evidence.
+
+A second observation [2] follows from the same dataset.
+
+The recommended steps are:
+1. Review the inputs
+2. Run the analysis
+3. Record the outputs
+
+1. Smith, J. A detailed footnote reference that runs on at length here.
+2. Jones, K. Another footnote body block with sufficient length to qualify.

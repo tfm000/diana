@@ -69,6 +69,11 @@ _SNAPSHOTS = [
     # cross-stage invariant run (which now asserts the no-figure-token removal
     # invariant registered this wave).
     ("figures", "pdf", True),
+    # footnotes (CLEAN-03, 02-04): superscript marker removal, `[n]` marker
+    # removal (via _remove_citations), best-effort footnote-body block drop, and
+    # numbered-list preservation. Selected by `pytest -k footnotes`; also swept
+    # by the cross-stage invariant run.
+    ("footnotes", "pdf", True),
 ]
 
 # The CLEAN-06 fixture stems (the `-k normalization` selector resolves to this
@@ -248,6 +253,33 @@ class TestSnapshotsFigures:
         # Cross-stage: the no-figure-token removal invariant (registered this
         # wave) must hold for this fixture, plus all earlier invariants (no
         # dangling ' ,' / '( )', no URL/email, etc.).
+        inp, _ = _load_snapshot(name)
+        out = clean_text(inp, source_format=fmt, ascii_only=ascii_only)
+        _invariants(out, ascii_only=ascii_only)
+
+
+_FOOTNOTES = [s for s in _SNAPSHOTS if s[0] == "footnotes"]
+
+
+class TestSnapshotsFootnotes:
+    """Exact snapshot match for the CLEAN-03 footnotes fixture (02-04).
+
+    The class name carries the `footnotes` token so the VALIDATION selector
+    `pytest tests/test_cleaner_corpus.py -k footnotes` resolves here. Covers
+    superscript-digit marker removal, `[n]` marker removal (via _remove_citations),
+    a best-effort footnote-body block drop, and numbered-list preservation (the
+    20+-char gate keeps the short list items from being mistaken for bodies).
+    """
+
+    @pytest.mark.parametrize("name, fmt, ascii_only", _FOOTNOTES)
+    def test_footnotes_snapshot_exact(self, name, fmt, ascii_only):
+        inp, expected = _load_snapshot(name)
+        assert clean_text(inp, source_format=fmt, ascii_only=ascii_only) == expected
+
+    @pytest.mark.parametrize("name, fmt, ascii_only", _FOOTNOTES)
+    def test_footnotes_invariants_hold(self, name, fmt, ascii_only):
+        # Cross-stage: every active removal invariant (incl. no-figure-token and
+        # no-URL/email) plus the structural invariants must hold for this fixture.
         inp, _ = _load_snapshot(name)
         out = clean_text(inp, source_format=fmt, ascii_only=ascii_only)
         _invariants(out, ascii_only=ascii_only)

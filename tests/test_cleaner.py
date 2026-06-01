@@ -316,6 +316,133 @@ class TestResidualImageArtifacts:
         assert clean_text(text) == text
 
 
+class TestFootnotes:
+    """Footnote markers + best-effort footnote-body removal (CLEAN-03).
+
+    Markers are removed for ALL engines: inline `[n]` (already handled by
+    _remove_citations) and superscript digits (U+00B9/B2/B3, U+2070-2079) which
+    are NOT smart-quote/dash replacements and would otherwise only vanish for the
+    ASCII net (Kokoro). Footnote BODIES are honestly best-effort: a conservative
+    marker-prefixed capitalized block after a blank line is dropped, but a real
+    multi-line numbered list is NOT mistaken for footnote bodies.
+    """
+
+    def test_superscript_marker_after_word_removed(self):
+        out = clean_text("This claim is well supported¹ by evidence.")
+        assert "¹" not in out
+        assert "well supported" in out
+        assert "by evidence" in out
+
+    def test_superscript_multidigit_marker_removed(self):
+        # A run of superscript digits (U+00B2 U+00B3) after a word is a marker.
+        out = clean_text("Multiple sources agree²³ on this point.")
+        assert "²" not in out and "³" not in out
+        assert "Multiple sources agree" in out
+        assert "on this point" in out
+
+    def test_superscript_high_range_marker_removed(self):
+        # U+2070-U+2079 range (here U+2074 = superscript 4, U+2070 = superscript 0).
+        out = clean_text("A later claim⁴ and an earlier one⁰ here.")
+        assert "⁴" not in out and "⁰" not in out
+        assert "A later claim" in out
+        assert "here" in out
+
+    def test_numbered_list_not_eaten_as_footnote_bodies(self):
+        # A real multi-line numbered list of SHORT items must survive (markers
+        # stripped later by _strip_list_markers; the body remover must not touch
+        # it).
+        out = clean_text(
+            "Steps:\n1. First item to do\n2. Second item to do\n3. Third item to do"
+        )
+        assert "First item" in out
+        assert "Second item" in out
+        assert "Third item" in out
+
+    def test_footnote_body_block_dropped(self):
+        # A conservative footnote-body block (numbered, capitalized, 20+ chars,
+        # after a blank line) is dropped best-effort. The body survives
+        # _remove_citations (it is the `n.` form, not a `[n]` bracket) and is
+        # removed by _remove_footnote_bodies.
+        text = (
+            "The main argument concludes here in the body text.\n\n"
+            "1. Smith, J. A detailed footnote reference that runs on at length.\n"
+            "2. Jones, K. Another footnote body block with sufficient length here."
+        )
+        out = clean_text(text)
+        assert "The main argument concludes here" in out
+        assert "Smith, J." not in out
+        assert "Jones, K." not in out
+
+    def test_bracket_marker_still_removed_by_citations(self):
+        # The existing inline `[n]` marker path stays covered (no regression).
+        out = clean_text("As shown [4] in the text.")
+        assert "[4]" not in out
+        assert "As shown" in out
+        assert "in the text" in out
+
+
+class TestStageOrdering:
+    """Pin the COMPLETE clean_text stage order after Wave 4 (HIGH-5).
+
+    Every hard ordering constraint from RESEARCH §Stage Ordering is asserted in
+    one place now that all stages exist, via a source-string `.index()` check on
+    `inspect.getsource(clean_text)` (no execution needed). If a future edit
+    reorders a stage, this fails loudly.
+    """
+
+    def test_orchestrator_stage_order(self):
+        import inspect
+
+        from diana.processing import cleaner
+
+        src = inspect.getsource(cleaner.clean_text)
+
+        def idx(name: str) -> int:
+            i = src.index(name)
+            assert i != -1, f"{name} not found in clean_text body"
+            return i
+
+        # (3) currency before (4) inline-math — proven currency-loss otherwise.
+        assert idx("_normalize_currency_percent") < idx("_remove_inline_math")
+        # (5) citations before (6) footnote-bodies — markers gone first.
+        assert idx("_remove_citations") < idx("_remove_footnote_bodies")
+        # (6) footnote-bodies before (7) captions/refs.
+        assert idx("_remove_footnote_bodies") < idx("_handle_captions_and_refs")
+        # (7) captions/refs before (8) code blocks.
+        assert idx("_handle_captions_and_refs") < idx("_remove_code_blocks")
+        # (8) code before (9)(10) table/chart detection — code looks like noise.
+        assert idx("_remove_code_blocks") < idx("_remove_tables")
+        assert idx("_remove_code_blocks") < idx("_remove_chart_fragments")
+        # (12) abbreviations before (13) URL/email — keeps e.g./U.S. intact.
+        assert idx("_expand_abbreviations") < idx("_strip_urls")
+        # (10) chart-fragment before (14) list-marker strip — protection needs markers.
+        assert idx("_remove_chart_fragments") < idx("_strip_list_markers")
+        # (20) whitespace collapse LAST — heals residue from all upstream deletions.
+        assert idx("_collapse_whitespace") == max(
+            idx(stage)
+            for stage in (
+                "_remove_latex_display",
+                "_normalize_currency_percent",
+                "_remove_inline_math",
+                "_remove_citations",
+                "_remove_footnote_bodies",
+                "_handle_captions_and_refs",
+                "_remove_code_blocks",
+                "_remove_tables",
+                "_remove_chart_fragments",
+                "_strip_list_markers",
+                "_remove_common_footers",
+                "_expand_abbreviations",
+                "_strip_urls",
+                "_strip_emails",
+                "_normalize_unicode",
+                "_remove_repeated_lines",
+                "_remove_page_numbers",
+                "_collapse_whitespace",
+            )
+        )
+
+
 class TestUrlStripping:
     def test_http_url(self):
         result = clean_text("Visit http://example.com for info.")
