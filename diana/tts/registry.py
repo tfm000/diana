@@ -73,6 +73,33 @@ def get_engine_voices(engine_name: str, config: DianaConfig | None = None) -> li
     return list(cls.VOICES)
 
 
+def resolve_default_voice(
+    db_path: str,
+    engine_name: str,
+    voices: list[TTSVoice],
+    engine_default: str,
+) -> str:
+    """Resolve the remembered per-engine default voice id from durable prefs (D-03).
+
+    Reads the remembered choice from ``app_settings`` (key
+    ``tts.default_voice.<engine_name>``) and validates it against the live
+    enumerated ``voices`` list: a remembered id still present in the list is
+    honored; an absent/stale id (uninstalled voice, or an id from a different
+    engine) falls back to ``engine_default`` — never preselecting a missing voice
+    (Pitfall 5). The remembered choice survives restart and engine switching
+    because it is keyed per engine in the durable store.
+
+    The membership/validation logic is the pure ``resolve_default_voice`` in
+    native_os_engine; this wrapper only adds the ``app_settings`` read. ``get_setting``
+    is imported lazily so the durable-prefs dependency stays off module import.
+    """
+    from diana.database import get_setting
+    from diana.tts.native_os_engine import resolve_default_voice as _resolve_pure
+
+    remembered = get_setting(db_path, f"tts.default_voice.{engine_name}", None) or ""
+    return _resolve_pure(remembered, voices, engine_default)
+
+
 def resolve_engine_name(saved: str) -> str:
     """Return the saved engine if still available, else the local default ("kokoro").
 

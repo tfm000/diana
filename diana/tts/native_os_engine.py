@@ -17,9 +17,11 @@ the temp WAV is always unlinked (T-03-08, V12).
 
 import asyncio
 import logging
+import re
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from pathlib import Path
 
 from diana.tts.base import TTSVoice
@@ -29,6 +31,114 @@ logger = logging.getLogger(__name__)
 # Neutral macOS baseline speaking rate (WPM). `say` default voices speak ~175-200
 # WPM; speed 0.5-2.0 maps to ~88-350 WPM via round(_BASE_WPM * speed).
 _BASE_WPM = 175
+
+# Quality-tier ranking for D-09 "auto-prefer best installed voice" ordering. Lower
+# rank sorts first (best first): enhanced/neural/premium/siri/standard > compact >
+# novelty. Unknown tiers sort just after the named good tiers (treated as standard).
+_TIER_RANK = {
+    "enhanced": 0,
+    "premium": 0,
+    "neural": 0,
+    "siri": 0,
+    "standard": 1,
+    "compact": 2,
+    "novelty": 3,
+}
+_TIER_RANK_DEFAULT = 1   # unknown/unlabelled tier ~ standard (D-06 fallback)
+
+
+# --- Pure, Streamlit-free helpers (unit-testable; no I/O, no streamlit, no DB) ---
+# Filtering / ordering / default-voice resolution over a list[TTSVoice]. The UI
+# (1_Upload.py / 5_Settings.py) wires these in; the engine module stays import-clean
+# on every platform (no streamlit, no winrt at module top).
+
+def _fold(text: str) -> str:
+    """Lowercase and strip diacritics so a name search is accent-insensitive.
+
+    A non-technical user typing "amel" should still match "Amélie" — they should
+    not have to type accented characters. NFKD-decompose, drop combining marks,
+    then casefold.
+    """
+    decomposed = unicodedata.normalize("NFKD", text or "")
+    no_marks = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return no_marks.casefold()
+
+
+def filter_voices(
+    voices: list[TTSVoice],
+    language: str | None = None,
+    tier: str | None = None,
+    query: str | None = None,
+) -> list[TTSVoice]:
+    """Filter a voice list by language, quality tier, and a name substring (D-07).
+
+    Predicates are ANDed; any argument left as ``None`` is ignored (pass-through).
+    ``language`` and ``tier`` match the corresponding field case-insensitively. A
+    bilingual voice passes a ``language`` filter if the filter language appears in
+    its ``language`` field (which, for bilingual voices, may list more than one
+    locale). ``query`` matches ``name`` case-insensitively as a substring. The
+    input list is never mutated; a new list is returned.
+    """
+    result = list(voices)
+    if language is not None:
+        lang = language.strip().lower()
+        result = [v for v in result if _matches_language(v, lang)]
+    if tier is not None:
+        want = tier.strip().lower()
+        result = [v for v in result if (v.tier or "").strip().lower() == want]
+    if query is not None:
+        needle = _fold(query.strip())
+        if needle:
+            result = [v for v in result if needle in _fold(v.name or "")]
+    return result
+
+
+def _matches_language(voice: TTSVoice, lang: str) -> bool:
+    """True if voice speaks ``lang`` (handles bilingual voices listing >1 locale)."""
+    field = (voice.language or "").strip().lower()
+    if not lang:
+        return True
+    if field == lang:
+        return True
+    # Bilingual voices may store multiple locales; match any whitespace/comma/slash
+    # separated token so e.g. "en-us, fr-fr" passes a language="fr-fr" filter (D-05).
+    if getattr(voice, "bilingual", False):
+        tokens = re.split(r"[\s,/]+", field)
+        return lang in (t for t in tokens if t)
+    return False
+
+
+def order_by_quality(voices: list[TTSVoice]) -> list[TTSVoice]:
+    """Sort voices best-quality-first (D-09), stable within a tier.
+
+    Ranking: enhanced/neural/premium/siri/standard > compact > novelty. The sort is
+    stable, so any pre-existing order within a tier (e.g. a system-language-first
+    arrangement the UI applies — D-08) is preserved. The input is not mutated.
+    """
+    return sorted(
+        voices,
+        key=lambda v: _TIER_RANK.get((v.tier or "").strip().lower(), _TIER_RANK_DEFAULT),
+    )
+
+
+def resolve_default_voice(
+    remembered: str, voices: list[TTSVoice], engine_default: str
+) -> str:
+    """Resolve the per-engine default voice id, never preselecting a missing one.
+
+    Returns ``remembered`` only when it is present in the live enumerated ``voices``
+    list; otherwise returns ``engine_default`` (the engine's own default — for
+    native_os the OS system default, an empty string). This is the D-03 / Pitfall 5
+    correctness control: a stale remembered id (e.g. a voice that was uninstalled,
+    or a voice id from a different engine) is never fed to synthesis.
+
+    Pure: takes the already-read ``remembered`` value, does no DB I/O. The DB-aware
+    wrapper that reads ``remembered`` from ``app_settings`` lives in the registry.
+    """
+    valid_ids = {v.id for v in voices}
+    if remembered and remembered in valid_ids:
+        return remembered
+    return engine_default
 
 
 class NativeOSEngine:
