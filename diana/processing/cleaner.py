@@ -232,9 +232,52 @@ _SUPERSCRIPT_MARKER_RE = re.compile(r"(?<=\w)[¹²³⁰-⁹]{1,4}")
 # line ('[n]' or 'n.'/'n)') that begins a capitalized citation-like sentence of
 # 20+ characters. SINGLE-LINE (no DOTALL); the '.{20,}' is bounded by line length,
 # anchored at both ends — no nested unbounded repetition (ReDoS, T-02-01). The
-# 20+-char gate is the disambiguator that keeps a SHORT numbered-list item
-# ('1. First item') from being mistaken for a footnote body.
+# 20+-char gate is the SHAPE disambiguator that keeps a SHORT numbered-list item
+# ('1. First item') out, but it is NOT sufficient on its own — a real instruction
+# list (recipe steps, rules) also has long capitalized items (CR-01). The
+# _FOOTNOTE_CITATION_SIGNAL_RE gate below is the SEMANTIC disambiguator.
 _FOOTNOTE_BODY_RE = re.compile(r"^\s*(?:\[\d{1,4}\]|\d{1,4}[.)])\s+[A-Z].{20,}$")
+
+# Citation-signal gate (CR-01): a marker-prefixed long line is treated as a
+# footnote BODY only when it ALSO carries a recognizable citation signal — an
+# author-initial shape ("Smith, J."), a 4-digit year, a bibliographic token
+# (pp./vol./ed./eds./no./doi/ibid), an "et al.", or an embedded URL. A plain
+# instruction/recipe/rule list line ("Always wear your helmet at all times.")
+# carries NONE of these, so it is KEPT — the conservative keep-content bias that
+# the phase exists to honor. Every alternative is anchored on a literal token or a
+# bounded \d{4}; no nested unbounded repetition. The search is additionally
+# bounded to the line's leading window (_FOOTNOTE_SIGNAL_WINDOW) so its cost is
+# O(1) in line length — a pathological newline-free blob cannot drive the
+# alternation into a quadratic position-by-position rescan (ReDoS, T-02-01).
+_FOOTNOTE_CITATION_SIGNAL_RE = re.compile(
+    r"[A-Z][a-z]+,\s+[A-Z]\."                        # author initial: "Smith, J."
+    r"|\b\d{4}\b"                                    # a 4-digit year
+    r"|\b(?:pp|vol|ed|eds|no|doi|ibid)\b\.?"         # bibliographic tokens
+    r"|\bet\s+al\b\.?"                               # "et al."
+    r"|https?://",                                   # an embedded URL
+    re.IGNORECASE,
+)
+
+# A real footnote's citation signal (author surname + initial, or year) sits at
+# the very start of the body, so only the leading window of a candidate line is
+# scanned. Capping the scanned span keeps _is_footnote_body_line linear in the
+# document size even if an upstream stage ever hands it one very long line.
+_FOOTNOTE_SIGNAL_WINDOW = 400
+
+
+def _is_footnote_body_line(line: str) -> bool:
+    """Whether a single line is a footnote-body candidate (CLEAN-03 / CR-01).
+
+    Requires BOTH the marker-prefixed capitalized 20+-char SHAPE and a citation
+    SIGNAL. The signal gate is what stops a genuine numbered instruction list
+    (whose items are long and capitalized but carry no citation marker) from being
+    deleted wholesale. The signal search is bounded to the line's leading window
+    so its cost does not grow with line length. Pure: re-only.
+    """
+    return bool(
+        _FOOTNOTE_BODY_RE.match(line)
+        and _FOOTNOTE_CITATION_SIGNAL_RE.search(line[:_FOOTNOTE_SIGNAL_WINDOW])
+    )
 
 
 def _remove_citations(text: str) -> str:
@@ -263,14 +306,18 @@ def _remove_footnote_bodies(text: str) -> str:
     Honestly scoped per RESEARCH Open Q3: EPUB/TXT have no page model after
     extraction, so footnote-body detection is best-effort. A line is dropped only
     when ALL of:
-      - it matches the conservative pattern `^\\s*(?:\\[\\d+\\]|\\d+[.)])\\s+[A-Z].{20,}$`
+      - it matches the conservative SHAPE `^\\s*(?:\\[\\d+\\]|\\d+[.)])\\s+[A-Z].{20,}$`
         (a marker-prefixed line starting a capitalized 20+-char citation), AND
+      - it carries a citation SIGNAL (author-initial "Smith, J.", a 4-digit year,
+        pp./vol./ed./eds./no./doi/ibid, "et al.", or a URL) — the gate added for
+        CR-01 so a genuine instruction/recipe/rule list (long capitalized items,
+        but NO citation marker) is never mistaken for footnote bodies, AND
       - it has a PRECEDING BLANK LINE (or is at document start) — footnote blocks
         sit below the body separated by a blank line, AND
-      - it is part of a block where EVERY line matches the pattern — a single
-        consecutive run of footnote-body lines. A multi-line numbered LIST of
-        short items never qualifies (the 20+-char gate), and the all-lines-match
-        rule keeps a list with one long item from dragging neighbours out.
+      - it is part of a block where EVERY line is a footnote-body line — a single
+        consecutive run. A multi-line numbered LIST never qualifies (no citation
+        signal), and the all-lines-match rule keeps a list with one citation-like
+        line from dragging plain-prose neighbours out.
 
     Runs at stage step 6, AFTER `_remove_citations` (markers gone) and BEFORE
     `_handle_captions_and_refs`. The `n.` body form survives the citation strip
@@ -283,9 +330,9 @@ def _remove_footnote_bodies(text: str) -> str:
     while i < len(lines):
         # A candidate footnote-body block must start after a blank line / doc top.
         prev_blank = (i == 0) or (lines[i - 1].strip() == "")
-        if prev_blank and _FOOTNOTE_BODY_RE.match(lines[i]):
+        if prev_blank and _is_footnote_body_line(lines[i]):
             j = i
-            while j < len(lines) and _FOOTNOTE_BODY_RE.match(lines[j]):
+            while j < len(lines) and _is_footnote_body_line(lines[j]):
                 j += 1
             # Drop the whole contiguous footnote-body block.
             for k in range(i, j):

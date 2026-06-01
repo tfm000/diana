@@ -373,6 +373,50 @@ class TestFootnotes:
         assert "Smith, J." not in out
         assert "Jones, K." not in out
 
+    def test_blank_flanked_long_item_numbered_list_kept(self):
+        # CR-01 regression: a real numbered list whose items are each 20+ chars,
+        # capitalized, and sit after a blank line must NOT be mistaken for a
+        # footnote-body block and deleted. Instruction/recipe/rule lists carry no
+        # citation signal (no "Surname, Initial.", year, pp./vol./doi/http), so the
+        # footnote remover must keep them; only the markers are normalized later.
+        text = (
+            "Here are the rules.\n\n"
+            "1. Always wear your helmet at all times.\n"
+            "2. Never leave the door unlocked tonight."
+        )
+        out = clean_text(text)
+        assert "Here are the rules" in out
+        assert "Always wear your helmet at all times" in out
+        assert "Never leave the door unlocked tonight" in out
+
+    def test_blank_flanked_recipe_list_kept(self):
+        # CR-01 regression: a recipe-style list (long capitalized items after a
+        # blank line) is the common over-strip case — every item must survive.
+        text = (
+            "Recipe steps:\n\n"
+            "1. Preheat the oven to exactly 350 degrees first.\n"
+            "2. Combine all the dry ingredients in one bowl.\n"
+            "3. Mix thoroughly until smooth and well blended."
+        )
+        out = clean_text(text)
+        assert "Recipe steps" in out
+        assert "Preheat the oven to exactly 350 degrees first" in out
+        assert "Combine all the dry ingredients in one bowl" in out
+        assert "Mix thoroughly until smooth and well blended" in out
+
+    def test_citation_footnote_block_still_removed(self):
+        # CR-01 paired assertion: a genuine citation-style footnote block (carrying
+        # the "Surname, Initial." signal) is STILL removed after the gate is added.
+        text = (
+            "The argument concludes in the main body text here.\n\n"
+            "1. Smith, J. A detailed footnote reference that runs on at length.\n"
+            "2. Jones, K. Another footnote body block with sufficient length here."
+        )
+        out = clean_text(text)
+        assert "The argument concludes" in out
+        assert "Smith, J." not in out
+        assert "Jones, K." not in out
+
     def test_bracket_marker_still_removed_by_citations(self):
         # The existing inline `[n]` marker path stays covered (no regression).
         out = clean_text("As shown [4] in the text.")
