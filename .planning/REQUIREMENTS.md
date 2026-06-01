@@ -25,9 +25,9 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### Rule-Based Cleaner Overhaul
 
-- [ ] **CLEAN-01**: Cleaner removes or replaces images/figures so they don't disrupt the audio
+- [x] **CLEAN-01**: Cleaner removes or replaces images/figures so they don't disrupt the audio
 - [x] **CLEAN-02**: Cleaner strips running headers/footers and page numbers (format-aware: PDF / EPUB / TXT)
-- [ ] **CLEAN-03**: Cleaner handles inline citations, footnote markers, and footnote-body blocks
+- [x] **CLEAN-03**: Cleaner handles inline citations, footnote markers, and footnote-body blocks
 - [x] **CLEAN-04**: Cleaner linearizes or skips tables sensibly for speech
 - [x] **CLEAN-05**: Cleaner handles code blocks, list markers, and URLs
 - [x] **CLEAN-06**: Cleaner normalizes numbers, currency, percentages, and common abbreviations for natural speech
@@ -114,9 +114,9 @@ Each v1 requirement maps to exactly one phase.
 | PRIV-02 | Phase 1 | Complete |
 | PRIV-03 | Phase 1 | Complete |
 | PRIV-04 | Phase 1 | Complete (Upload half via 01-03; News half via 01-04) |
-| CLEAN-01 | Phase 2 | Pending |
+| CLEAN-01 | Phase 2 | Complete |
 | CLEAN-02 | Phase 2 | Complete |
-| CLEAN-03 | Phase 2 | Pending |
+| CLEAN-03 | Phase 2 | Complete |
 | CLEAN-04 | Phase 2 | Complete |
 | CLEAN-05 | Phase 2 | Complete |
 | CLEAN-06 | Phase 2 | Complete |

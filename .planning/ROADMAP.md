@@ -14,7 +14,7 @@ Diana is a working brownfield Streamlit audiobook app. This milestone reshapes i
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Foundation & Privacy Toggle** - Remove cloud TTS, migrate storage to per-user dirs, ship per-job LLM-cleaning toggle *(all 4 plans implemented 2026-05-31; awaiting orchestrator phase-verifier / roadmap-update pass for the official close-out)*
-- [ ] **Phase 2: Rule-Based Cleaner Overhaul** - Make the LLM-off cleaning path trustworthy, guarded by a golden-corpus suite
+- [x] **Phase 2: Rule-Based Cleaner Overhaul** - Make the LLM-off cleaning path trustworthy, guarded by a golden-corpus suite (completed 2026-06-01)
 - [ ] **Phase 3: Native OS TTS (New Default)** - Zero-download default engine using macOS `say` / Windows WinRT neural voices
 - [ ] **Phase 4: Engine Management & Voice Catalog** - On-demand model downloads + in-app Piper voice browse/install/preview/import
 - [ ] **Phase 5: Heavy Opt-In Engines** - Orpheus, F5-TTS, and GPU-gated Fish S2 Pro as opt-in installs on the shared substrate
@@ -85,7 +85,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 — same-file `cleaner.py`)*
 
-- [ ] 02-04-PLAN.md — Figures/captions/footnotes + corpus completion: caption-keep vs reference-remove + dangling repair, superscript footnote markers, best-effort footnote bodies, full CLEAN-01..08 corpus + planted-regression loud-failure check (CLEAN-01, CLEAN-03, CLEAN-08)
+- [x] 02-04-PLAN.md — Figures/captions/footnotes + corpus completion: caption-keep vs reference-remove + dangling repair, superscript footnote markers, best-effort footnote bodies, full CLEAN-01..08 corpus + planted-regression loud-failure check (CLEAN-01, CLEAN-03, CLEAN-08)
 
 **UI hint**: no
 
@@ -177,7 +177,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Privacy Toggle | 4/4 | In Progress (all plans implemented; awaiting phase verifier / roadmap-update pass) | - |
-| 2. Rule-Based Cleaner Overhaul | 3/4 | In Progress|  |
+| 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
 | 3. Native OS TTS (New Default) | 0/TBD | Not started | - |
 | 4. Engine Management & Voice Catalog | 0/TBD | Not started | - |
 | 5. Heavy Opt-In Engines | 0/TBD | Not started | - |

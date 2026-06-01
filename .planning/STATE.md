@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 02-03-PLAN.md (code/lists/URLs/emails — CLEAN-05)
-last_updated: "2026-06-01T00:11:13.101Z"
+status: verifying
+stopped_at: Completed 02-04-PLAN.md (figures/captions/footnotes + corpus completion — CLEAN-01/03/08)
+last_updated: "2026-06-01T00:31:03.547Z"
 last_activity: 2026-06-01
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
-  percent: 14
+  completed_plans: 8
+  percent: 29
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-05-29)
 
 Phase: 02 (rule-based-cleaner-overhaul) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-01
 
-Progress: [█████████░] 88%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [█████████░] 88%
 | Phase 02 P01 | 9min | 3 tasks | 19 files |
 | Phase 02 P02 | 4min | 2 tasks | 13 files |
 | Phase 02 P03 | 5min | 2 tasks | 7 files |
+| Phase 02 P04 | 13min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,10 @@ Recent decisions affecting current work:
 - [Phase 02 plan 03]: Code-block removal (_remove_code_blocks: fenced bounded-DOTALL span + contiguous 2+ line indented runs) runs BEFORE table/chart detection so short symbol-heavy code lines do not false-trigger the noise detectors; a SINGLE indented line is KEPT (CLEAN-07 over-strip guard — a lone indented line is prose, not code). Noise-detector tests (ChartFragments/TableRemoval) stayed green, proving the code-before-noise ordering did not regress them.
 - [Phase 02 plan 03]: _strip_list_markers (- / * / + / 1. / a)) runs AFTER _remove_chart_fragments so the 02-01 chart/heading protection still sees the markers; the line is never deleted, only the marker prefix is stripped and the item prose kept.
 - [Phase 02 plan 03]: URL (http(s)+www.) and email removal use a STRUCTURAL guard — required scheme/www. prefix and required @ — so U.S./e.g. survive without a denylist; removed entirely (no "link" token, Decision 4). The no-URL/no-email removal invariant is REGISTERED into the corpus _invariants this wave (the wave that owns it) and holds across all snapshots; the figure-token invariant stays deferred to 02-04. CLEAN-05 satisfied.
+- [Phase ?]: [Phase 02 plan 04]: _handle_captions_and_refs replaces the blunt _remove_figure_table_refs — captions (label at a segment boundary + ':'/'.' + capitalized prose) keep the sentence with only the label+delimiter dropped; inline references are removed (whole cross-reference parentheticals first, then bare tokens) then _repair_dangling fixes the grammar. CLEAN-01 satisfied.
+- [Phase ?]: [Phase 02 plan 04]: _repair_dangling whitespace quantifiers are BOUNDED ({0,8}/{1,8}) — the unbounded form was O(n^2) under re.sub on adversarial space runs (36s/9s observed and fixed mid-task, Rule-1). The non-spec ' .'->'.' substitution was dropped. ReDoS T-02-01 is now runtime-verified linear for the figure/caption/footnote stages.
+- [Phase ?]: [Phase 02 plan 04]: Footnote markers always (superscript U+00B9/B2/B3 + U+2070-2079 removed for ALL engines in _remove_citations); footnote BODIES best-effort (_remove_footnote_bodies drops a conservative 20+-char marker-prefixed capitalized block after a blank line, all-lines-match, at stage 6). The 20+-char gate keeps a short numbered list intact. CLEAN-03 satisfied, honestly scoped.
+- [Phase ?]: [Phase 02 plan 04]: Final no-figure-token removal invariant REGISTERED into the corpus _invariants (completing the removal set) across all 15 snapshots; a complete-stage-ordering source-index test pins every hard constraint; an EPUB/UTF-8 fixture extends coverage to all PDF/EPUB/TXT flavors; the planted-regression check turned the corpus RED with a legible diff and restored green. CLEAN-08 demonstrated (ROADMAP criterion #4).
 
 ### Pending Todos
 
@@ -116,6 +121,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-01T00:10:51.811Z
-Stopped at: Completed 02-03-PLAN.md (code/lists/URLs/emails — CLEAN-05)
+Last session: 2026-06-01T00:31:03.542Z
+Stopped at: Completed 02-04-PLAN.md (figures/captions/footnotes + corpus completion — CLEAN-01/03/08)
 Resume file: None
