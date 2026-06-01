@@ -220,6 +220,17 @@ class TestCitations:
 
 
 class TestFigureTableRefs:
+    """Caption-vs-reference handling (CLEAN-01).
+
+    Two branches: a label at the START of a segment followed by ':'/'.' then prose
+    is a CAPTION (strip the label + delimiter, KEEP the sentence); a label embedded
+    mid-sentence is a REFERENCE (remove the token, then repair the dangling grammar
+    so no 'in ,' / '( )' / double space survives). Reference cases stay green from
+    earlier waves; caption cases are added here (Regression #4).
+    """
+
+    # --- Reference branch (token removed + grammar repaired) ---
+
     def test_figure_ref(self):
         result = clean_text("As shown in Figure 3 and Figure 12.")
         assert "Figure" not in result
@@ -235,6 +246,74 @@ class TestFigureTableRefs:
     def test_equation_ref(self):
         result = clean_text("From Eq. 5 we derive.")
         assert "Eq." not in result
+
+    def test_reference_grammar_repaired(self):
+        # The inline token is removed AND the dangling grammar repaired: no
+        # 'in ,', no double space, the prose intact.
+        result = clean_text("As shown in Figure 3, the trend is up.")
+        assert "Figure 3" not in result
+        assert "in ," not in result
+        assert "  " not in result
+        assert "the trend is up" in result
+
+    def test_reference_empty_parens_repaired(self):
+        # "(see Figure 2)" must not leave an empty/dangling paren pair.
+        result = clean_text("The method works (see Figure 2) well.")
+        assert "Figure 2" not in result
+        assert "( )" not in result
+        assert "()" not in result
+        assert "The method works" in result
+        assert "well" in result
+
+    # --- Caption branch (label + delimiter dropped, prose KEPT) ---
+
+    def test_caption_colon_kept_prose(self):
+        # "Figure 3: The system has three stages." keeps the sentence, drops the
+        # label + colon, leaves no leading ": " artifact.
+        result = clean_text("Figure 3: The system has three stages.")
+        assert result == "The system has three stages."
+
+    def test_caption_period_kept_prose(self):
+        # A label followed by a period then a capitalized sentence is also a
+        # caption — keep the prose.
+        result = clean_text("Figure 3. The system has three stages.")
+        assert "The system has three stages" in result
+        assert "Figure 3" not in result
+        assert not result.startswith(".")
+
+    def test_caption_table_label_kept_prose(self):
+        result = clean_text("Table 4: Summary statistics for each cohort.")
+        assert "Summary statistics for each cohort" in result
+        assert "Table 4" not in result
+        assert not result.startswith(":")
+
+
+class TestResidualImageArtifacts:
+    """Residual EPUB/Markdown image artifacts are stripped (CLEAN-01).
+
+    NOTE: literal Markdown image syntax `![alt](img.png)` never reaches the
+    cleaner — the MD/EPUB parsers render to HTML and `get_text()` drops the
+    <img> element entirely. This stage only catches RESIDUAL junk: a bare
+    image-filename token (e.g. `image1.png`) that leaks from an oddly-formed
+    source. It is intentionally conservative and bounded.
+    """
+
+    def test_residual_image_filename_removed(self):
+        out = clean_text("The chart is here. image1.png Next sentence.")
+        assert "image1.png" not in out
+        assert "Next sentence" in out
+        assert "The chart is here" in out
+
+    def test_residual_image_filename_jpg_removed(self):
+        out = clean_text("See diagram2.jpg for the layout.")
+        assert "diagram2.jpg" not in out
+        assert "for the layout" in out
+
+    def test_real_word_with_png_substring_kept(self):
+        # The matcher targets a bounded `image\d+.ext` / `<name><digit>.ext`
+        # filename token, not arbitrary prose — a normal sentence is untouched.
+        text = "The opening sentence is perfectly normal here."
+        assert clean_text(text) == text
 
 
 class TestUrlStripping:

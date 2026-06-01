@@ -88,7 +88,10 @@ def clean_text(text: str, *, source_format: str | None = None, ascii_only: bool 
     text = _normalize_currency_percent(text)
     text = _remove_inline_math(text)
     text = _remove_citations(text)
-    text = _remove_figure_table_refs(text)
+    # Captions keep their prose (label+colon dropped); inline references are
+    # removed and the dangling grammar repaired; residual image-filename
+    # artifacts stripped. Replaces the old blunt _remove_figure_table_refs.
+    text = _handle_captions_and_refs(text)
     # Code blocks MUST come out BEFORE table/chart detection: code lines are
     # short and symbol-heavy and would false-trigger those noise detectors.
     text = _remove_code_blocks(text)
@@ -224,12 +227,100 @@ def _remove_citations(text: str) -> str:
     return text
 
 
-def _remove_figure_table_refs(text: str) -> str:
-    """Remove figure, table, and equation references."""
-    text = re.sub(
-        r"(?:Figure|Fig\.|Table|Tab\.|Equation|Eq\.|Algorithm|Alg\.)\s*\d+[\.\w]*",
-        "", text, flags=re.IGNORECASE,
-    )
+# Figure/table label kinds shared by the caption and reference branches. Kept as
+# a single fragment so both patterns stay in sync. All entries are literal words
+# or escaped-dot abbreviations — no nested unbounded repetition (ReDoS, T-02-01).
+_FIG_LABEL = r"(?:Figure|Fig\.|Table|Tab\.|Equation|Eq\.|Algorithm|Alg\.)"
+
+# Caption: a label at the START of a segment (line start, or just after a
+# sentence terminator) followed by a number, a ':' or '.' delimiter, then a
+# capitalized word that begins real prose. The whole label+delimiter is stripped
+# and the trailing sentence kept. Anchored at a segment boundary so a mid-sentence
+# "Figure 3." (a reference) is NOT caught here. Bounded: fixed label + \d{1,4}.
+_CAPTION_RE = re.compile(
+    r"(?:(?<=^)|(?<=[.!?]\s))" + _FIG_LABEL + r"\s*\d{1,4}\s*[:.]\s+(?=[A-Z])",
+    re.MULTILINE,
+)
+
+# Cross-reference parenthetical: "(see Figure 2)", "(Fig. 3)", "(cf. Table 1)" —
+# the entire paren group is a reference and is removed whole, so no "(see )"
+# residue is left for _repair_dangling. Bounded inner content.
+_REF_PARENS_RE = re.compile(
+    r"\(\s*(?:see\s+|cf\.\s+|e\.g\.\s+|i\.e\.\s+)?" + _FIG_LABEL + r"\s*\d{1,4}\s*\)",
+    re.IGNORECASE,
+)
+
+# Inline reference token embedded mid-sentence: "Figure 3", "Fig. 1", "Table 2".
+# Removed, then _repair_dangling fixes the surrounding grammar. Bounded \d{1,4}
+# plus an optional trailing letter suffix (e.g. "3a") — no unbounded repetition.
+_REF_TOKEN_RE = re.compile(_FIG_LABEL + r"\s*\d{1,4}[a-zA-Z]?", re.IGNORECASE)
+
+# Residual EPUB/Markdown image artifact: a bare image-filename token that leaked
+# from an oddly-formed source (e.g. "image1.png"). NOTE: literal Markdown image
+# syntax `![alt](img.png)` never reaches the cleaner — the MD/EPUB parsers render
+# to HTML and get_text() drops the <img>; matching `![...](...)` here would be
+# dead code against the real parser path. This catches only the residual filename
+# token. Bounded: a short word stem + digits + a known raster/vector extension.
+_IMAGE_ARTIFACT_RE = re.compile(
+    r"\b(?:image|img|figure|fig|graphic|illustration|diagram|chart|photo|pic|screenshot)"
+    r"\d+\.(?:png|jpe?g|gif|svg|webp|bmp|tiff?)\b",
+    re.IGNORECASE,
+)
+
+
+def _repair_dangling(text: str) -> str:
+    r"""Repair grammar left dangling after an inline reference token is removed.
+
+    Applies the RESEARCH substitutions in order: drop empty parens, collapse a
+    dangling "in ," back to "in", remove a space before a comma, and collapse a
+    double space. These are local fixes so the no-' ,' / no-'( )' corpus
+    invariants hold even before the final _collapse_whitespace pass.
+
+    Every whitespace run is BOUNDED with an explicit upper cap ({0,8}/{1,8}) over
+    a negated horizontal-whitespace class `[^\S\n]` — never an unbounded `+`/`*`
+    that `re.sub` could rescan into an O(n^2) blowup on a long adversarial space
+    run (the bound is the ReDoS mitigation, T-02-01; verified linear on a 200k
+    -space input). A reference token removed mid-sentence leaves only a handful of
+    adjacent spaces, so the small cap covers every real case; any larger run is
+    healed by the final _collapse_whitespace stage. `[^\S\n]` (not `\s`) keeps
+    newlines intact so paragraph breaks survive. Pure: re-only.
+    """
+    text = re.sub(r"\([^\S\n]{0,8}\)", "", text)     # empty parens "( )"/"()" -> ""
+    text = re.sub(r"\bin[^\S\n]{1,8},", "in", text)  # "in ," -> "in"
+    text = re.sub(r"[^\S\n]{1,8},", ",", text)       # " ," -> "," (no newline eaten)
+    return text
+
+
+def _handle_captions_and_refs(text: str) -> str:
+    """Handle figure/table captions and inline references (CLEAN-01).
+
+    Two branches (RESEARCH §Caption-vs-reference), replacing the old blunt
+    _remove_figure_table_refs which left dangling ": The system…" / "in , the…":
+
+    1. CAPTION: a label at the start of a segment followed by ':'/'.' and a
+       capitalized sentence ("Figure 3: The system has three stages.") — strip the
+       label AND the delimiter, KEEP the prose. Captions are frequently real
+       informative text, so the conservative keep-content bias applies.
+    2. REFERENCE: a label embedded mid-sentence ("As shown in Figure 3, …",
+       "(see Figure 2)") — remove the token (whole-paren cross-references first so
+       no "(see )" residue survives), then _repair_dangling fixes the grammar.
+
+    Also strips RESIDUAL EPUB/MD image-filename artifacts (a bare "image1.png"
+    token). Literal MD image syntax is already gone by the time the parser hands
+    plain text to the cleaner; this is residual-token-only, NOT a markdown-image
+    matcher. Runs at stage step 7, right after _remove_citations. Pure: re-only,
+    no logging/exceptions; all patterns bounded/anchored (ReDoS, T-02-01).
+    """
+    # 1. Captions first (so the leading label is gone before reference handling).
+    text = _CAPTION_RE.sub("", text)
+    # 2a. Whole cross-reference parentheticals (avoids a "(see )" remnant).
+    text = _REF_PARENS_RE.sub("", text)
+    # 2b. Remaining inline reference tokens.
+    text = _REF_TOKEN_RE.sub("", text)
+    # Residual image-filename artifacts (defensive; parser strips real MD syntax).
+    text = _IMAGE_ARTIFACT_RE.sub("", text)
+    # Repair grammar left dangling by the inline-token removals.
+    text = _repair_dangling(text)
     return text
 
 

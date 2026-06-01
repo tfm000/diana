@@ -1,0 +1,7 @@
+Figure 3: The system has three documented stages.
+
+As shown in Figure 3, the trend is up across the period.
+
+The method works (see Figure 2) on every input we tried.
+
+A residual artifact like image1.png should not be spoken.

@@ -63,6 +63,12 @@ _SNAPSHOTS = [
     # (which now asserts the no-URL/no-email removal invariant registered below).
     ("code_lists_urls", "txt", True),
     ("urls_emails_guard", "txt", True),
+    # figures (CLEAN-01, 02-04): caption-keep (label+colon dropped, prose kept),
+    # inline reference removal with dangling-grammar repair, and residual
+    # image-filename strip. Selected by `pytest -k figures`; also swept by the
+    # cross-stage invariant run (which now asserts the no-figure-token removal
+    # invariant registered this wave).
+    ("figures", "pdf", True),
 ]
 
 # The CLEAN-06 fixture stems (the `-k normalization` selector resolves to this
@@ -99,9 +105,9 @@ def _invariants(out: str, *, ascii_only: bool = False) -> None:
     fixtures that still carry the tokens will fail):
       - 02-03 (CLEAN-05): no URL / no "www." / no "<user>@<host>.<tld>" email
             — REGISTERED below (this wave owns it); holds across all snapshots.
-      - 02-04 (CLEAN-01/03): no figure/table reference token  [still deferred]
-            re.search(r"\\b(Figure|Table|Fig\\.|Tab\\.)\\s*\\d", out)
-      - 02-04 (CLEAN-01): no LaTeX backslash / brace residue, if a fixture carries it
+      - 02-04 (CLEAN-01/03): no figure/table reference token
+            — REGISTERED below (this wave owns it; completes the removal set);
+            holds across all snapshots now that captions/refs are handled.
     ----------------------------------------------------------------------------
     """
     # Structural removal invariants (live at Wave 1).
@@ -114,10 +120,19 @@ def _invariants(out: str, *, ascii_only: bool = False) -> None:
     # Wave 3 adds (02-03, CLEAN-05): no surviving URL or email. This wave owns the
     # URL/email removal stages, so it registers the removal invariant here. It
     # holds across ALL committed snapshot inputs (no prior fixture planted a
-    # URL/email). The figure/footnote-token invariant stays deferred to 02-04.
+    # URL/email).
     assert "http" not in out, f"URL leaked: {out!r}"
     assert "www." not in out, f"www. URL leaked: {out!r}"
     assert not re.search(r"\S+@\S+\.\S+", out), f"email leaked: {out!r}"
+
+    # Wave 4 adds (02-04, CLEAN-01): no surviving figure/table reference token.
+    # This wave owns the caption/reference handling, so it registers the final
+    # removal invariant here — completing the removal-invariant set
+    # (pipe-table + no-URL/email + no-figure-token + no-dangling). It holds
+    # across ALL committed snapshot inputs.
+    assert not re.search(r"\b(Figure|Table|Fig\.|Tab\.)\s*\d", out), (
+        f"figure/table reference token leaked: {out!r}"
+    )
 
     # Engine-conditional ASCII path.
     if ascii_only:
@@ -205,6 +220,34 @@ class TestSnapshotsCodeListsUrls:
     def test_code_lists_urls_invariants_hold(self, name, fmt, ascii_only):
         # Cross-stage: the no-URL/no-email removal invariant (registered this
         # wave) must hold for these fixtures, plus all earlier invariants.
+        inp, _ = _load_snapshot(name)
+        out = clean_text(inp, source_format=fmt, ascii_only=ascii_only)
+        _invariants(out, ascii_only=ascii_only)
+
+
+_FIGURES = [s for s in _SNAPSHOTS if s[0] == "figures"]
+
+
+class TestSnapshotsFigures:
+    """Exact snapshot match for the CLEAN-01 figures fixture (02-04).
+
+    The class name carries the `figures` token so the VALIDATION selector
+    `pytest tests/test_cleaner_corpus.py -k figures` resolves here. Covers the
+    caption branch (label+colon dropped, prose kept), the reference branch
+    (inline token removed + dangling grammar repaired — no 'in ,' / '( )' /
+    double space), and the residual image-filename strip.
+    """
+
+    @pytest.mark.parametrize("name, fmt, ascii_only", _FIGURES)
+    def test_figures_snapshot_exact(self, name, fmt, ascii_only):
+        inp, expected = _load_snapshot(name)
+        assert clean_text(inp, source_format=fmt, ascii_only=ascii_only) == expected
+
+    @pytest.mark.parametrize("name, fmt, ascii_only", _FIGURES)
+    def test_figures_invariants_hold(self, name, fmt, ascii_only):
+        # Cross-stage: the no-figure-token removal invariant (registered this
+        # wave) must hold for this fixture, plus all earlier invariants (no
+        # dangling ' ,' / '( )', no URL/email, etc.).
         inp, _ = _load_snapshot(name)
         out = clean_text(inp, source_format=fmt, ascii_only=ascii_only)
         _invariants(out, ascii_only=ascii_only)
