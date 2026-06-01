@@ -14,6 +14,7 @@ _ENGINE_CLASSES = {
 _ASCII_ONLY_ENGINES = {
     "kokoro": True,
     "piper": False,
+    "native_os": False,   # OS voices speak UTF-8 — no cleaner transliteration (Phase 2)
 }
 
 
@@ -21,6 +22,9 @@ def _get_engine_class(engine_name: str):
     if engine_name == "piper":
         from diana.tts.piper_engine import PiperEngine
         return PiperEngine
+    if engine_name == "native_os":
+        from diana.tts.native_os_engine import NativeOSEngine
+        return NativeOSEngine
     cls = _ENGINE_CLASSES.get(engine_name)
     if cls is None:
         raise ValueError(f"Unknown TTS engine: {engine_name}")
@@ -39,6 +43,9 @@ def create_engine(config: DianaConfig, engine_name: str | None = None):
     elif engine_name == "piper":
         from diana.tts.piper_engine import PiperEngine
         engine = PiperEngine(model_path=config.tts.piper.model_path)
+    elif engine_name == "native_os":
+        from diana.tts.native_os_engine import NativeOSEngine
+        engine = NativeOSEngine()   # no config — OS-provided voices
     else:
         raise ValueError(f"Unknown TTS engine: {engine_name}")
 
@@ -49,8 +56,19 @@ def create_engine(config: DianaConfig, engine_name: str | None = None):
 def get_engine_voices(engine_name: str, config: DianaConfig | None = None) -> list[TTSVoice]:
     """Return available voices for an engine.
 
-    Returns the static VOICES class attribute for the engine.
+    Most engines expose a static VOICES class attribute. native_os is the
+    exception (D-04): its voices are enumerated dynamically from the OS at
+    runtime, so it constructs a short-lived engine, initializes it, and returns
+    its live list_voices(). UI callers cache this across Streamlit reruns.
     """
+    if engine_name == "native_os":
+        from diana.tts.native_os_engine import NativeOSEngine
+        eng = NativeOSEngine()
+        eng.initialize()
+        try:
+            return eng.list_voices()
+        finally:
+            eng.shutdown()
     cls = _get_engine_class(engine_name)
     return list(cls.VOICES)
 
@@ -66,8 +84,8 @@ def resolve_engine_name(saved: str) -> str:
 
 
 def list_engines() -> list[str]:
-    """Return names of all available TTS engines."""
-    return ["kokoro", "piper"]
+    """Return names of all available TTS engines (native_os first — it is the default)."""
+    return ["native_os", "kokoro", "piper"]
 
 
 def engine_is_ascii_only(engine_name: str) -> bool:
