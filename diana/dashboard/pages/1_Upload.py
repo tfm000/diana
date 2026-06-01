@@ -11,9 +11,66 @@ from diana.dashboard.sidebar import get_icon_image, setup_sidebar
 from diana.database import create_job, get_setting, init_db, set_setting
 from diana.llm.registry import get_llm_config
 from diana.models import Job, JobStatus, parse_page_range
-from diana.tts.registry import create_engine, get_engine_voices, list_engines, resolve_engine_name
+from diana.tts.native_os_engine import filter_voices, order_by_quality
+from diana.tts.registry import (
+    create_engine,
+    get_engine_voices,
+    list_engines,
+    resolve_default_voice,
+    resolve_engine_name,
+)
 
 logger = logging.getLogger(__name__)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_voices(engine_name: str):
+    """Enumerate an engine's voices once per engine, cached across reruns (D-04).
+
+    native_os shells `say -v '?'` to enumerate; without this cache that subprocess
+    would re-run on every keystroke in the search box (Pattern 6 / threat T-03-12).
+    TTSVoice is a plain dataclass, so it is picklable and cache-safe. config is read
+    fresh inside (not a cache arg) — only the engine name keys the cache.
+    """
+    return get_engine_voices(engine_name, config=get_config())
+
+
+def _system_language_first(voices, system_lang):
+    """Order voices best-quality-first (D-09), system-language voices ahead (D-08).
+
+    Sorts the system language's voices before all others, then applies the pure
+    quality ordering within each group (stable, so the quality order is preserved).
+    """
+    sys_lang = (system_lang or "").strip().lower()
+    in_lang = [v for v in voices if (v.language or "").strip().lower() == sys_lang]
+    others = [v for v in voices if (v.language or "").strip().lower() != sys_lang]
+    return order_by_quality(in_lang) + order_by_quality(others)
+
+
+def _engine_default_voice(engine_name: str, config_default: str) -> str:
+    """Cheap per-engine default voice id, without loading heavy engine models.
+
+    native_os exposes its OS-default via a no-model NativeOSEngine instance (empty
+    id => OS system default, D-02). Other engines (kokoro/piper) load ONNX/voice
+    models in create_engine, so we must NOT instantiate them just to read a default
+    on every rerun — fall back to the saved config voice for those.
+    """
+    if engine_name == "native_os":
+        from diana.tts.native_os_engine import NativeOSEngine
+        eng = NativeOSEngine()                       # __init__ loads nothing
+        getter = getattr(eng, "default_voice", lambda: "")
+        return getter()
+    return config_default or ""
+
+
+# Generic D-10 hint — wording stays platform-neutral (Pitfall 3: macOS 15 Sequoia
+# moved the voice-download UI, so a hardcoded breadcrumb would mislead).
+_NATIVE_HINT = (
+    "Want higher-quality or more voices? Your operating system can download extra "
+    "voices for free — no terminal needed. On macOS, open **System Settings** and "
+    "search for *Spoken Content* or *System Voices*. On Windows, open **Settings ▸ "
+    "Time & Language ▸ Speech** and add voices. New voices appear here after download."
+)
 
 st.set_page_config(
     page_title="Diana's Upload",
@@ -46,21 +103,82 @@ with col1:
     engine_name = st.selectbox("Engine", engines, index=engines.index(saved))
 
 with col2:
-    voices = get_engine_voices(engine_name, config=config)
+    all_voices = _cached_voices(engine_name)
+
+    # Language + quality filters and a name search around the voice picker (D-07).
+    _langs = sorted({(v.language or "").strip().lower() for v in all_voices if v.language})
+    # System language first in the filter options (D-08).
+    _sys_lang = (config.tts.language or "").strip().lower()
+    if _sys_lang in _langs:
+        _langs = [_sys_lang] + [l for l in _langs if l != _sys_lang]
+    lang_options = ["All languages"] + _langs
+    lang_choice = st.selectbox("Language", lang_options, index=0, key=f"lang_{engine_name}")
+    sel_language = None if lang_choice == "All languages" else lang_choice
+
+    _tiers = sorted({(v.tier or "").strip().lower() for v in all_voices if v.tier})
+    tier_options = ["All qualities"] + _tiers
+    tier_choice = st.selectbox("Quality", tier_options, index=0, key=f"tier_{engine_name}")
+    sel_tier = None if tier_choice == "All qualities" else tier_choice
+
+    name_query = st.text_input(
+        "Search voices", value="", placeholder="Type part of a name…",
+        key=f"voicesearch_{engine_name}",
+    )
+
+    # Filter -> order best-quality-first, system-language voices ahead (D-07/08/09).
+    filtered = filter_voices(
+        all_voices, language=sel_language, tier=sel_tier, query=name_query or None
+    )
+    voices = _system_language_first(filtered, config.tts.language)
+
     voice_options = {v.name: v.id for v in voices}
     voice_display = list(voice_options.keys())
+
+    # Per-engine default voice from durable prefs, validated against the live list so
+    # a stale/cross-engine id is never preselected (D-03, Pitfall 5). Falls back to the
+    # engine's own default (native_os = OS system default, empty id).
+    _engine_default = _engine_default_voice(engine_name, config.tts.voice)
+    _resolved_default = resolve_default_voice(
+        config.storage.database_path, engine_name, all_voices, _engine_default
+    )
     default_idx = 0
     for i, v in enumerate(voices):
-        if v.id == config.tts.voice:
+        if v.id == _resolved_default:
             default_idx = i
             break
+
     selected_voice_name = st.selectbox(
         "Voice", voice_display, index=default_idx, key=f"voice_{engine_name}"
     )
     selected_voice_id = voice_options[selected_voice_name] if voice_options else ""
 
+    # Remember the per-engine choice durably (write only on change) — survives
+    # restart and engine switching (D-03). Don't persist an empty id (= "use OS
+    # default"), so the OS default stays dynamic rather than snapshotted.
+    _pref_key = f"tts.default_voice.{engine_name}"
+    if selected_voice_id and selected_voice_id != get_setting(
+        config.storage.database_path, _pref_key, None
+    ):
+        set_setting(config.storage.database_path, _pref_key, selected_voice_id)
+
 with col3:
     speed = st.slider("Speed", min_value=0.5, max_value=2.0, value=config.tts.speed, step=0.1)
+
+# Dismissible hint pointing to the OS's own voice downloads (D-10), shown only for
+# native_os. The dismissed flag is durable (app_settings) so it stays dismissed
+# across restart. Wording is platform-neutral (Pitfall 3).
+if engine_name == "native_os":
+    _hint_dismissed = (
+        get_setting(config.storage.database_path, "tts.native_hint_dismissed", "0") == "1"
+    )
+    if not _hint_dismissed:
+        _hint_col, _btn_col = st.columns([6, 1])
+        with _hint_col:
+            st.info(_NATIVE_HINT)
+        with _btn_col:
+            if st.button("Dismiss", key="dismiss_native_hint"):
+                set_setting(config.storage.database_path, "tts.native_hint_dismissed", "1")
+                st.rerun()
 
 # Per-job LLM cleaning toggle — privacy-first (default OFF), provider-gated, and durable
 # across restarts via the app_settings store (key "upload.use_llm"). The Upload page
