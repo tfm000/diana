@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Rule-Based Cleaner Overhaul** - Make the LLM-off cleaning path trustworthy, guarded by a golden-corpus suite (completed 2026-06-01)
 - [ ] **Phase 3: Native OS TTS (New Default)** - Zero-download default engine using macOS `say` / Windows WinRT neural voices
 - [x] **Phase 4: Engine Management & Voice Catalog** - On-demand model downloads + in-app Piper voice browse/install/preview/import (completed 2026-06-15)
-- [ ] **Phase 5: Heavy Opt-In Engines** - Orpheus, F5-TTS, and GPU-gated Fish S2 Pro as opt-in installs on the shared substrate
+- [x] **Phase 5: Heavy Opt-In Engines** - Orpheus, F5-TTS, and GPU-gated Fish S2 Pro as opt-in installs on the shared substrate (completed 2026-06-15)
 - [ ] **Phase 6: Packaging & First-Class Windows** - Double-click macOS `.app` / Windows `.exe` with bundled ffmpeg and Windows CI
 - [ ] **Phase 7: Production Hardening** - Worker lifetime, SQLite retry, security fixes, and an offline smoke test as the release gate
 
@@ -213,7 +213,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6)*
 
-- [ ] 05-07-PLAN.md — Fish S2 Pro slice (HEAVY-03): shown-but-disabled GPU gate (D-10) + accept-once NC-license (D-08)
+- [x] 05-07-PLAN.md — Fish S2 Pro slice (HEAVY-03): shown-but-disabled GPU gate (D-10) + accept-once NC-license (D-08)
 
 **Research note**: Heavy-engine Python APIs are fast-moving (MEDIUM confidence) — flag this phase for `/gsd:plan-phase --research-phase` to re-verify llama-cpp-python Metal/CPU wheel availability, model repo IDs/revisions, and inference signatures for Orpheus and F5-TTS at plan time.
 
@@ -259,6 +259,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
 | 3. Native OS TTS (New Default) | 3/5 | In Progress|  |
 | 4. Engine Management & Voice Catalog | 6/6 | Complete   | 2026-06-15 |
-| 5. Heavy Opt-In Engines | 6/7 | In Progress|  |
+| 5. Heavy Opt-In Engines | 7/7 | Complete   | 2026-06-15 |
 | 6. Packaging & First-Class Windows | 0/TBD | Not started | - |
 | 7. Production Hardening | 0/TBD | Not started | - |
