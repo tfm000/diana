@@ -253,3 +253,116 @@ be captured (record + upload), validated (good accepted, bad rejected with a mes
 cloned by ear, reused across jobs, and removed (with the in-use block honored), this item
 is satisfied. Until then it remains DEFERRED (carried, not failed) — the surrounding
 capture/validation/save/remove/enumeration logic is automated-test-covered above.
+
+---
+
+## HEAVY-03 — Fish S2 Pro real GPU install + by-ear synthesis (Plan 05-07)
+
+- **Plan:** 05-07 (Fish vertical slice: GPU gate → accept-license → install → select →
+  synthesize — the FINAL engine, completing the three-engine lineup D-01)
+- **Status:** PARTIALLY DEFERRED — the shown-but-disabled GPU-gate path (D-10), the
+  accept-once NC-license gate (D-08), and the D-16 Convert fail-fast ARE fully verified this
+  session (the LIVE no-capable-GPU path is the real state of this macOS box). ONLY the real
+  CUDA-machine install + by-ear synthesis is deferred (NOT a defect, NOT a silent skip).
+- **Deferred at:** 2026-06-15
+- **Reason:** Fish S2 Pro is NVIDIA-CUDA-focused (~12–24 GB VRAM) and effectively
+  unsupported on Apple Silicon (RESEARCH A5). The verifying machine is a macOS dev box with
+  **no NVIDIA GPU**, so a real fish-speech install + on-device CUDA synthesis is **impossible
+  here** — it requires an NVIDIA ≥12 GB GPU machine (like the Phase-3 Windows UAT). Per the
+  Task-3 checkpoint authorization ("a real GPU install/synthesize REQUIRES an NVIDIA ≥12 GB
+  machine and is almost certainly deferred to 05-HUMAN-UAT.md — not a defect"), the real
+  install → synth steps are carried forward here. **Crucially, the GPU-gate behavior that
+  HEAVY-03/SC#3 actually specifies (shown-but-disabled-with-reason on a GPU-less box) is the
+  LIVE path on this machine and IS verified below — it is not deferred.**
+
+### What IS verified (automated + agent pre-check — the live no-GPU path, fully exercised)
+
+- **Engine + worker logic** — `tests/test_fish_engine.py` (flipped skip→PASS):
+  `FishEngine.list_voices()` surfaces the bundled `f5_default` voice (reused as Fish's
+  zero-shot default — A6) enumerable with NO `torch`/`fish_speech` import (D-17);
+  `synthesize` shells `[<torch-venv-python>, fish_worker.py]` passing
+  `ref_file`/`ref_text`/`gen_text` as stdin JSON DATA (never a shell string — T-05-CMD),
+  `HF_HOME` set in env, and round-trips the worker's WAV bytes (the subprocess is mocked —
+  no real torch synth). `initialize()` refuses unless **BOTH** installed **AND** a capable
+  GPU is present (D-10/D-16 — both the no-GPU and not-installed cases raise an actionable
+  error).
+- **GPU gate (D-09/D-10, torch-free)** — `tests/test_gpu_probe.py` (PASS):
+  `capable_nvidia_gpu()` shells `nvidia-smi` only (NO torch import), returns
+  `(False, 0, reason)` when absent / below the 12 GB floor and `(True, vram, "")` above it.
+  On THIS box (no `nvidia-smi`) it live-returns
+  `(False, 0, "requires an NVIDIA GPU with ~12+ GB VRAM (none detected)")`.
+- **UI surfaces (interaction-level AppTest)** — `tests/test_fish_slice_apptest.py` (5 PASS),
+  exercising the LIVE no-GPU path + a mocked GPU-ok path:
+  (1) WITHOUT a capable GPU the **Settings ▸ Voices Fish row is SHOWN with a DISABLED
+  Install button + the VRAM reason caption** — it is **NOT hidden**, and NO
+  license/footprint/Install control appears (no download can start) — D-10, the reconciled
+  HEAVY-03/SC#3 behavior;
+  (2) selecting Fish on Upload surfaces the GPU/VRAM reason on the readiness note and
+  `heavy_engine_failfast("fish")` drives the Convert `disabled=` (D-16/D-10);
+  (3) with `capable_nvidia_gpu` monkeypatched to `(True, 24, "")`, the Fish row then shows
+  the **Fish Audio Research License / CC-BY-NC-SA-4.0 non-commercial disclosure** + the
+  `huggingface.co/fishaudio/s2-pro` link + "I accept" and **NO Install before acceptance**
+  (D-08); (4) once accepted (persisted), the itemized deps-vs-model footprint confirm +
+  Install appear and the accept gate is gone — all with NO `torch`/`fish_speech` imported.
+- **License gate (round-trip)** — `tests/test_license_gate.py` (PASS): the per-engine
+  accept-once flag is engine-scoped (`license.accepted.fish` is independent of
+  `license.accepted.f5`), persists over a real temp SQLite DB across a fresh connection, and
+  is idempotent (re-install never re-prompts — D-08).
+- **Registry wiring** — `fish` is in `list_engines()`, routes to `FishEngine`, is
+  UTF-8-capable (`_ASCII_ONLY_ENGINES["fish"] is False`), and the cheap enumeration/badge
+  path imports no `torch`/`fish_speech` (verified by `sys.modules` assertion in the full
+  suite). The cross-engine browser lists Fish's voices even on a GPU-less box (browsing is
+  GPU-independent; only install/use is gated).
+
+### What is NOT verified (needs a human ON AN NVIDIA ≥12 GB GPU MACHINE)
+
+⚠️ **These steps CANNOT run on a macOS / non-NVIDIA machine** — Fish requires CUDA. Run them
+on a machine with an NVIDIA GPU reporting ≥12 GB VRAM (24 GB recommended). No terminal is
+required for any step (that is the point of HEAVY-03). Fish shares the `torch` venv with F5
+by default (D-03 / Q-B); install F5 first if you want to confirm the shared-venv reuse.
+
+1. **GPU gate OPENS on a capable machine (D-10).** Open **Settings ▸ Voices ▸ Engine models
+   ▸ Heavy opt-in engines ▸ Fish**. On the NVIDIA box, confirm the row is now **enabled**
+   (no "requires a capable GPU" disabled state) — the live `nvidia-smi` probe reports ≥12 GB.
+   (On a GPU-less machine the row must remain SHOWN-but-DISABLED with the VRAM reason — that
+   half is already verified this session.)
+2. **Accept the NC license (D-08).** Confirm the Fish row shows the **Fish Audio Research
+   License / CC-BY-NC-SA-4.0 (non-commercial / personal use only)** disclosure + a **Read the
+   license** link to `huggingface.co/fishaudio/s2-pro`, and that **NO Install control is
+   shown yet**. Click **I accept**. Confirm the footprint confirm + **Install** now appear.
+   Restart the app and confirm the license is **NOT re-prompted** (accept-once persisted).
+3. **Install (two-phase progress; CONFIRM the fish-speech inference signature, Q-D/A6).**
+   Click **Install** to confirm the footprint, then **Install** again. Watch the two-phase
+   progress: Phase A (`uv venv` + `uv pip install` the pinned
+   `fish-speech @ git+…@e5e2926…`), then Phase B (the `fishaudio/s2-pro` weights into the
+   per-user HF cache). It should end at **"Ready · Fish installed"**. **⚠️ At this point the
+   MEDIUM-confidence fish-speech inference call in `diana/tts/heavy_workers/fish_worker.py`
+   must be confirmed against the installed package** (the `TTSInferenceEngine` /
+   `ServeTTSRequest` shape, decoder config/checkpoint filenames) — adjust that single
+   function if the real API differs; the engine/JSON contract is fixed. **Q-B fallback:** if
+   installing fish-speech into the shared `torch` venv conflicts with F5's torch CUDA build,
+   switch `fish_install_spec().venv_name` to a dedicated `"fish"` and update the
+   `install_state._heavy_venv_name` mapping, then re-install.
+4. **Select + synthesize (by ear).** Go to **Upload**, select the **Fish** engine and the
+   **Default (Fish)** voice (or a saved custom voice). Upload a short `.txt` and click
+   **Convert to Audio**. Confirm the job completes, the audio plays, it is intelligible, and
+   it sounds like the chosen reference voice (by ear) — not silence, not a different engine.
+5. **Default + other engines untouched (D-02 / D-01).** Confirm the lightweight default
+   (native_os / Kokoro / Piper) still works exactly as before, and that **Orpheus and F5
+   still work** — the three-engine lineup (D-01) is complete and independent. Confirm no
+   terminal was used for any install.
+6. **(Optional) Uninstall reclaims space (shared-torch rule).** On the Fish row, click
+   **Uninstall** → **Confirm uninstall**; it should report the freed MB. If F5 is also
+   installed, uninstalling Fish must keep the shared `torch` venv and only remove the
+   `.fish.installed` marker; with nothing else using it, the venv tree is removed. A
+   pending/in-progress Fish job must refuse the uninstall ("switch that job first").
+
+### Resume signal
+
+When a human has run steps 1–5 on an **NVIDIA ≥12 GB GPU machine** and confirms Fish's GPU
+gate opens, the NC license is accepted (no terminal, no re-prompt), the real fish-speech
+inference signature is confirmed (step 3), Fish synthesizes the default/custom voice by ear,
+and the default + Orpheus + F5 engines are unchanged, this item is satisfied. Until then the
+**real GPU install + synth** remains DEFERRED (carried, not failed). The **shown-but-disabled
+GPU-gate behavior that HEAVY-03/SC#3 specifies is already verified this session** and is NOT
+part of this deferral.
