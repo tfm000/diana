@@ -137,6 +137,50 @@ def resolve_default_voice(
     return _resolve_pure(remembered, voices, engine_default)
 
 
+def all_engine_voices(config: DianaConfig | None = None) -> list[tuple[str, TTSVoice]]:
+    """Aggregate every engine's voices into ``(engine_name, voice)`` pairs (D-10).
+
+    The cross-engine browser source: iterates ``list_engines()`` and, for each, the
+    existing ``get_engine_voices(engine, config)`` — so native_os's dynamic OS
+    enumeration, Piper's static-curated-plus-installed merge, and Kokoro's baked-in
+    voices all flow through here unchanged (no engine re-enumeration logic is
+    reimplemented). Each voice is tagged with the engine it came from so the UI can
+    show an engine column, offer an engine filter, and key per-voice label overrides
+    by ``(engine, voice.id)``. Returns a flat list (not a generator) so the Streamlit
+    caller can reuse it across reruns. Cheap by design: ``get_engine_voices`` already
+    avoids heavy SDK imports on the enumeration path (ENGINE-01).
+    """
+    pairs: list[tuple[str, TTSVoice]] = []
+    for engine_name in list_engines():
+        for voice in get_engine_voices(engine_name, config):
+            pairs.append((engine_name, voice))
+    return pairs
+
+
+# --- Thin install-state shims (ENGINE-01) ----------------------------------------
+# Re-exposed from install_state so the UI imports ONE place for the readiness/footprint
+# badges. The cheap-probe logic stays in install_state (a pure filesystem probe — NO
+# onnxruntime/piper/kokoro import on the badge path); these wrappers only forward, and
+# lazy-import install_state so the cleaning path (engine_is_ascii_only) never pulls it.
+
+def piper_voice_installed(voice_id: str) -> bool:
+    """True iff a Piper voice's ``{id}.onnx`` is on disk (cheap probe; ENGINE-01)."""
+    from diana.tts.install_state import piper_voice_installed as _probe
+    return _probe(voice_id)
+
+
+def piper_footprint_bytes(voice_id: str) -> int:
+    """On-disk size of an installed Piper voice, else 0 (cheap probe; ENGINE-01)."""
+    from diana.tts.install_state import piper_footprint_bytes as _probe
+    return _probe(voice_id)
+
+
+def kokoro_model_installed() -> bool:
+    """True iff the Kokoro model + voices bin are on disk (cheap probe; ENGINE-01)."""
+    from diana.tts.install_state import kokoro_model_installed as _probe
+    return _probe()
+
+
 def resolve_engine_name(saved: str) -> str:
     """Return the saved engine if still available, else the local default ("kokoro").
 
