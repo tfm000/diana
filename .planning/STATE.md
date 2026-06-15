@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 03 plan 03-04 complete (voice-attribute picker UX, NATIVE-05) — human-verified + finalized; Wave 5 (03-05 WinRT) remains"
-last_updated: "2026-06-15T00:00:00.000Z"
+stopped_at: "Phase 03 plan 03-05 implementation complete (Windows WinRT branch, NATIVE-02) — macOS-testable surface done + committed; Task 3 blocking Windows UAT DEFERRED (user-approved, no Windows box) to 03-05-WINDOWS-UAT-DEFERRED.md"
+last_updated: "2026-06-15T10:55:39.000Z"
 last_activity: 2026-06-15
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 13
-  completed_plans: 12
-  percent: 92
+  completed_plans: 13
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-05-29)
 
 ## Current Position
 
-Phase: 03 (native-os-tts-new-default) — EXECUTING
-Plan: 5 of 5
-Status: Plan 03-04 complete (human-verified); ready to execute 03-05 (WinRT)
+Phase: 03 (native-os-tts-new-default) — EXECUTING (all 5 plans implemented; 1 blocking Windows UAT carried forward)
+Plan: 5 of 5 — implementation complete
+Status: Plan 03-05 implementation complete; Task 3 (blocking Windows WinRT UAT) DEFERRED to a real Windows box per user approval — see 03-05-WINDOWS-UAT-DEFERRED.md
 Last activity: 2026-06-15
 
-Progress: [█████████░] 92%
+Progress: [██████████] 100% (plans implemented; Windows WinRT UAT pending)
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [█████████░] 92%
 | Phase 03 P02 | 2min | 2 tasks | 2 files |
 | Phase 03 P03 | 3min | 3 tasks | 6 files |
 | Phase 03 P04 | ~9min impl (wall ~25h spanning blocking human-verify) | 2 tasks (1 auto/TDD + 1 blocking checkpoint) | 5 files (4 planned + diana/tts/registry.py; +1 in-plan deviation = empty-filter crash fix 7be54ac) |
+| Phase 03 P05 | ~4min impl | 2 of 3 tasks (2 auto/TDD; Task 3 blocking Windows UAT DEFERRED, not blocked) | 4 files (3 planned modified + 1 deferred-UAT created; matches files_modified; no scope expansion) |
 
 ## Accumulated Context
 
@@ -111,6 +112,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 03 plan 03]: default TTS engine flipped kokoro->native_os and voice af_heart->'' (D-01); NO migration (clean-break) — existing config.yaml untouched, only fresh configs change. The two documented known-break tests (test_tts_registry ascii_only/list_engines + test_config defaults) fixed in the SAME wave; coverage preserved by splitting the flipped ascii-only assertion into native_os-registered + genuinely-unknown cases. Full suite 374 passed / 4 skipped (remaining skips = Plan 04 filter_voices/resolve_default_voice + Plan 05 WinRT/SAPI5 boundaries).
 - [Phase 03]: [Phase 03 plan 04]: Voice-attribute picker UX (NATIVE-05) — pure Streamlit-free helpers filter_voices/order_by_quality/resolve_default_voice live in native_os_engine.py (no streamlit import; unit-tested), the UI wires them. Upload + Settings expose a language filter + quality/tier filter + name search around the voice dropdown (D-07), default to the OS system voice with best-quality-preferred ordering, system-language first (D-08/D-09). Per-engine remembered voice persists in app_settings under `tts.default_voice.<engine_name>` across engine-switch + restart and never preselects an absent id — resolve_default_voice validates the remembered id against the live list, else engine default (D-03 / Pitfall 5; T-03-11 mitigation). get_engine_voices wrapped in @st.cache_data keyed by engine name so `say -v '?'` is not re-shelled per keystroke (T-03-12). Dismissible native_os download hint via durable `tts.native_hint_dismissed` flag (D-10). Settings treats native_os as a no-model-file engine (skips kokoro/piper model-path validation).
 - [Phase 03]: [Phase 03 plan 04, deviation #1 Rule-1 bug surfaced during human-verify]: An empty filter/search result crashed the picker with KeyError: None (selected voice id resolved to None, then voice_options[None] was indexed). Fixed with a None-safe resolve_selected_voice_id helper + a friendly "no voices match" empty-state message in both pickers + a regression test (commit 7be54ac). D-01 (fresh-config-only default flip, NO migration shim) and D-02 (picker shows only the selected engine's voices) were left UNTOUCHED — the human's "piper shown first" / "Amélie not on piper" reports were these decisions working as designed, not bugs. Full suite 377 passed / 2 skipped (remaining skips = Plan 05 WinRT/SAPI5 boundaries).
+- [Phase 03]: [Phase 03 plan 05]: Windows WinRT branch of NativeOSEngine implemented (NATIVE-02). Four winrt-* packages (SpeechSynthesis/runtime/Storage.Streams/Foundation >=3.2.1) platform-gated to `; sys_platform == 'win32'` (pyproject) / `"win32"` (requirements), mirroring audioop-lts — the #1 macOS-install constraint HELD + verified (pip --dry-run ignores all four; engine imports with no winrt; no module-top winrt import). _winrt_synth uses bare `await synthesize_text_to_stream_async` (NEVER create_task — PyWinRT _async methods are awaitable but not coroutines) + `bytes(bytearray(buf))` buffer-protocol read (NEVER DataReader, maintainer guidance); _winrt_list_voices maps VoiceInformation→TTSVoice with tier from "OneCore" in id; _winrt_default_voice_id = get_default_voice().id (D-02). D-11 SAPI5-only = is_sapi5_only(voices) @staticmethod predicate (no voice id contains "OneCore") that also sets self._sapi5_only during enumeration. winrt imports lazy inside the win32 branch only. Branch logic mock-tested on macOS (patch.dict(sys.modules,{...}) with async fakes + a real bytearray Buffer so bytes(bytearray(buf)) is the proven path). Full suite 379 passed.
+- [Phase 03]: [Phase 03 plan 05, user-approved deviation]: Task 3 (blocking Windows WinRT UAT) DEFERRED — no Windows box at execution time; user will run it after all other phases complete. Instead of pausing at the checkpoint, a self-contained 03-05-WINDOWS-UAT-DEFERRED.md was written (7-step Windows verification, A1 pinning via dir(SpeechSynthesizer), neural synth + SAPI5 note + zero-download audio + OS default voice, the Task 3 acceptance criteria, the 03-VALIDATION manual-only rows, requirements/decisions, closeout). Assumption A1 (exact PyWinRT snake_case spelling — get_all_voices/get_default_voice/voice setter) remains the single most likely Windows-side fix point. NATIVE-02/03/04/05 Windows surface stays PENDING until that UAT runs; ROADMAP/REQUIREMENTS deliberately NOT modified by this plan.
 
 ### Pending Todos
 
@@ -131,10 +134,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| Windows UAT (blocking) | Phase 03 plan 05 Task 3 — Windows WinRT UAT: pin PyWinRT spelling (A1) + confirm neural synth, picker enumeration, OS default voice, and SAPI5-only D-11 note with zero-download audio on a real Windows 10/11 box. Closes the Windows surface of NATIVE-02/03/04/05. Self-contained checklist: `.planning/phases/03-native-os-tts-new-default/03-05-WINDOWS-UAT-DEFERRED.md` | Pending (user runs after all other phases) | 2026-06-15 (Phase 03) |
 
 ## Session Continuity
 
 Last session: 2026-06-15
-Stopped at: Phase 03 plan 03-04 COMPLETE — human-verified all acceptance steps (incl. empty-filter crash fix 7be54ac) and approved; SUMMARY written + STATE finalized. Next: Wave 5 (03-05 WinRT). D-01/D-02 left intact.
-Resume file: None
+Stopped at: Phase 03 plan 03-05 IMPLEMENTATION COMPLETE — Tasks 1-2 (win32-gated winrt deps + WinRT branch with mocked tests) done + committed (4cce0cf, b0eaaf2); full suite 379 passed; macOS install/import constraint held + verified. Task 3 blocking Windows WinRT UAT DEFERRED (user-approved, no Windows box) — self-contained checklist at 03-05-WINDOWS-UAT-DEFERRED.md; all 5 Phase 03 plans now implemented with 1 blocking Windows UAT carried forward. ROADMAP/REQUIREMENTS untouched by this plan.
+Resume file: .planning/phases/03-native-os-tts-new-default/03-05-WINDOWS-UAT-DEFERRED.md (run on a Windows box, then update 03-05-SUMMARY.md + close the Deferred Items row)
