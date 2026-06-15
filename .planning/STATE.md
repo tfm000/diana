@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 4 context gathered (Engine Management & Voice Catalog — engine-agnostic management UX + generic download/cache layer proven via Piper+Kokoro; uninstall added)
-last_updated: "2026-06-15T12:55:52.790Z"
-last_activity: 2026-06-15 -- Completed Phase 04 Plan 02 (generic download/cache layer + Piper catalog data layer)
+stopped_at: Completed Phase 04 Plan 03 (walking slice — Settings st.tabs + Voices hub; one Piper voice installs end-to-end and is selectable; human-verify APPROVED)
+last_updated: "2026-06-15T15:00:41.000Z"
+last_activity: 2026-06-15 -- Completed Phase 04 Plan 03 (walking slice: tabbed Settings + Voices hub + one-Piper-voice threaded install -> selectable)
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 19
-  completed_plans: 15
-  percent: 79
+  completed_plans: 16
+  percent: 84
 ---
 
 # Project State
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-05-29)
 ## Current Position
 
 Phase: 04 (engine-management-voice-catalog) — EXECUTING
-Plan: 3 of 6
-Status: Executing Phase 04 (04-01 + 04-02 complete; Wave 2 download/catalog substrate landed)
-Last activity: 2026-06-15 -- Completed Phase 04 Plan 02 (generic download/cache layer + Piper catalog data layer)
+Plan: 4 of 6
+Status: Executing Phase 04 (04-01 + 04-02 + 04-03 complete; Wave 3 walking slice landed — tabbed Settings + one-Piper-voice install proven end-to-end through the UI)
+Last activity: 2026-06-15 -- Completed Phase 04 Plan 03 (walking slice: tabbed Settings + Voices hub + one-Piper-voice threaded install -> selectable)
 
-Progress: [████████░░] 79% (15/19 plans complete; Phase 04 download/cache + catalog substrate landed)
+Progress: [████████░░] 84% (16/19 plans complete; Phase 04 walking slice landed — substrate proven end-to-end through the real UI against the real network)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8
-- Average duration: ~4 min implementation (plus blocking human-verify checkpoint gaps)
-- Total execution time: ~0.3 hours active
+- Total plans completed: 16
+- Average duration: ~5 min implementation (plus blocking human-verify checkpoint gaps)
+- Total execution time: ~1.3 hours active
 
 **By Phase:**
 
@@ -49,8 +49,8 @@ Progress: [████████░░] 79% (15/19 plans complete; Phase 04 d
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (3min), 01-02 (~24min wall incl. checkpoint gap), 01-03 (~3min impl + ~5min next-day deviation tweaks; wall ~26h spanning blocking human-verify), 01-04 (~5min impl across RED/GREEN/wiring + ~1min related 01-01 follow-up surfaced during verify; wall ~14h spanning blocking human-verify)
-- Trend: implementation velocity stable; 01-04 had zero in-plan deviations (matches 01-01); the only follow-up commit (b8e70d0) was attributed back to 01-01 not 01-04. Across Phase 01: deviation rate landed at 2 expansions in 01-03 + 1 amended decision in 01-02 + 0 in 01-01/01-04, all surfacing during human-verify.
+- Last 5 plans: 03-04 (~9min impl, wall ~25h spanning blocking human-verify, 1 deviation), 03-05 (~4min impl, Task 3 Windows UAT deferred), 04-01 (~9min, 0 deviations), 04-02 (~7min), 04-03 (~58min impl, wall ~1h spanning blocking human-verify, 3 in-plan deviations)
+- Trend: 04-03 was the most deviation-heavy plan to date — 3 Rule-1 integration bugs surfaced at the blocking human-verify checkpoint (Resume terminal-state, Piper install→use enumeration, no-restart cache + uniform names), all fixed in-plan and re-verified. Consistent with the Phase-1/3 pattern that integration/UX defects surface at human-verify, not during autonomous impl; the higher count reflects the first-of-its-kind thread+st.fragment pattern (no in-repo precedent) meeting the real install→use→display flow. Deviation #2 was deliberately built as the shared enumeration foundation 04-05 reuses (no duplication).
 
 *Updated after each plan completion*
 | Phase 01 P02 | ~24min | 3 tasks | 8 files |
@@ -67,6 +67,7 @@ Progress: [████████░░] 79% (15/19 plans complete; Phase 04 d
 | Phase 03 P05 | ~4min impl | 2 of 3 tasks (2 auto/TDD; Task 3 blocking Windows UAT DEFERRED, not blocked) | 4 files (3 planned modified + 1 deferred-UAT created; matches files_modified; no scope expansion) |
 | Phase 04 P01 | ~9min | 3 tasks (3 auto; zero deviations) | 10 files (8 created: 7 scaffolds + manifest fixture; 2 modified: base.py + pyproject.toml — matches files_modified) |
 | Phase 04 P04-02 | ~7min | 2 tasks | 7 files |
+| Phase 04 P03 | ~58min impl (wall ~1h spanning blocking human-verify) | 2 tasks (1 auto + 1 blocking checkpoint; checkpoint surfaced 3 in-plan Rule-1 deviations) | 9 files (plan named only 5_Settings.py; effective set = 5_Settings.py + 1_Upload.py + voice_cache.py[new] + registry.py + install_state.py + catalog.py + 3 new test files) |
 
 ## Accumulated Context
 
@@ -122,6 +123,10 @@ Recent decisions affecting current work:
 - [Phase 03]: [Phase 03 plan 05, user-approved deviation]: Task 3 (blocking Windows WinRT UAT) DEFERRED — no Windows box at execution time; user will run it after all other phases complete. Instead of pausing at the checkpoint, a self-contained 03-05-WINDOWS-UAT-DEFERRED.md was written (7-step Windows verification, A1 pinning via dir(SpeechSynthesizer), neural synth + SAPI5 note + zero-download audio + OS default voice, the Task 3 acceptance criteria, the 03-VALIDATION manual-only rows, requirements/decisions, closeout). Assumption A1 (exact PyWinRT snake_case spelling — get_all_voices/get_default_voice/voice setter) remains the single most likely Windows-side fix point. NATIVE-02/03/04/05 Windows surface stays PENDING until that UAT runs; ROADMAP/REQUIREMENTS deliberately NOT modified by this plan.
 - [Phase 04 plan 02]: Generic download substrate (diana/downloads/downloader.py) is import-clean of piper/kokoro/streamlit (D-19) — download_file copies RESEARCH Pattern 1 verbatim (Range -> .part: 206 appends / 200 resets; total from manifest size_bytes/Content-Range, never a zero Content-Length; iter_content 64KB; md5-verify-then-atomic-os.replace, delete-.part-on-mismatch; cancel leaves .part for resume), has_space ancestor-walks a not-yet-created model_dir (D-05), clean_partials(directory=None) defaults to model_dir() for the zero-arg D-18 bulk action.
 - [Phase 04 plan 02]: Piper catalog (diana/tts/catalog.py) = pure parse_manifest + thin load_bundled_manifest (offline, D-02) / refresh_catalog (only network touch; degrades to bundled on failure). Bundled piper_voices_curated.json = 9 best-per-language voices fetched VERBATIM from live manifest (verified size_bytes+md5; upstream commit pinned, Pitfall 6) — no invented digests. install_state cheap filesystem probes (ENGINE-01). download_url named per the binding scaffold (not plan's download_url_for); piper_footprint_bytes=0 when absent. package-data for data/*.json+samples (Phase-6 must verify PyInstaller); addopts '-m not network' excludes the opt-in net smoke.
+- [Phase 04 plan 03]: WALKING SLICE (D-19) — Settings restructured into st.tabs (General/Voices/Processing/LLM Cleaning/News) with a dedicated Voices management hub (D-09); existing sections moved in unchanged, one Save button kept, tab-switching stays cheap. Only the single-Piper-voice Install path is fully live this plan (full browse/filter/group-by-language deferred to 04-04). The slice runs the Plan-02 substrate end-to-end through the real UI against the real network: footprint/install-state badge (Ready vs "~X MB, downloads on first use", ENGINE-03/D-11) → has_space disk pre-check that refuses before any bytes (D-05, T-04-DISK) → UI-spawned daemon threading.Thread calling download_file for the .onnx + .onnx.json (RESEARCH Pattern 3, NO in-repo precedent) writing only to st.session_state.dl_state → @st.fragment(run_every=0.5s) byte-progress poller (the thread is st.*-free; worker.py/pipeline.py untouched, ENGINE-04/T-04-SRC) → md5 atomic install → selectable for a job (VOICE-02/05). Re-trigger guarded on in-flight dl_state + serialized to one in-flight download (Pitfall 3, T-04-RETRIG). Human-verify checkpoint APPROVED; suite 391→428 passed.
+- [Phase 04 plan 03, deviation #1 Rule-1 bug surfaced during human-verify]: Resume never appeared after Cancel because cancellation was not a terminal state (only in-flight vs done/error), so an interrupted install could not be resumed (defeating D-06). Fixed by adding a `cancelled` terminal marker + pure _download_action/_can_spawn_download helpers (unit-tested) so the flow is Cancel→"Cancelling…"→Resume and Resume offsets from the existing .part rather than restarting at 0 (D-06/D-07). Commit 02f2eca; new tests/test_settings_downloads.py.
+- [Phase 04 plan 03, deviation #2 Rule-1 bug surfaced during human-verify]: Installed Piper voices did not appear in the Upload/Settings pickers (VOICE-05 unmet in practice) because get_engine_voices("piper") returned only static PiperEngine.VOICES. Fixed by adding install_state.list_installed_piper_voice_ids() (cheap model-dir glob) + a DYNAMIC piper branch in registry.get_engine_voices that MERGES static + installed ids (deduped, Kokoro files excluded), labeled via catalog.voice_label_for_id — cheap filesystem probe, NO heavy onnxruntime/piper import (ENGINE-01). This is the shared enumeration foundation 04-05's all_engine_voices builds on (built once here so 04-05 does not duplicate it). Commit 55e87f9; new tests/test_piper_enumeration.py.
+- [Phase 04 plan 03, deviation #3 Rule-1 bug surfaced during human-verify]: (A) Even after deviation #2, a freshly installed voice required an app restart to appear because the per-page @st.cache_data _cached_voices served a stale list; (B) installed-voice display names did not match static PiperEngine.VOICES formatting. Fixed by (A) unifying the per-page caches into a shared diana/dashboard/voice_cache.py and calling clear_voice_cache() from the SCRIPT thread on the install-done transition (no restart; worker thread stays st.*-free), and (B) pure _format_piper_name/_parse_piper_id in catalog.py so installed names format uniformly as "Lessac (US Medium)". Commit 9c36960; new tests/test_voice_cache.py + extended test_piper_enumeration.py. (Effective files_modified for 04-03 = 5_Settings.py + 1_Upload.py + voice_cache.py[new] + registry.py + install_state.py + catalog.py + 3 new test files — the plan frontmatter had named only 5_Settings.py.) Full "Show all" catalog browse/preview/import is Wave 4 (04-04); cross-engine browser + editable labels + Upload-dropdown badges is Wave 5 (04-05).
 
 ### Pending Todos
 
@@ -146,6 +151,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-15T12:52:19.632Z
-Stopped at: Phase 4 context gathered (Engine Management & Voice Catalog — engine-agnostic management UX + generic download/cache layer proven via Piper+Kokoro; uninstall added)
+Last session: 2026-06-15T15:00:41.000Z
+Stopped at: Completed Phase 04 Plan 03 (walking slice — tabbed Settings + Voices hub + one-Piper-voice threaded install proven end-to-end through the UI; human-verify APPROVED; 3 in-plan deviations). Next: 04-04 (full catalog browse + preview + manual import), Wave 4.
 Resume file: None

@@ -46,16 +46,16 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 - [x] **ENGINE-01**: Engine availability/capability is detected cheaply, without importing heavy dependencies
 - [x] **ENGINE-02**: Models/weights download on demand with visible byte progress, resumability, and a disk-space pre-check
-- [ ] **ENGINE-03**: The engine picker shows install state and download-footprint badges (e.g. "Ready" / "~2.4 GB, downloads on first use")
-- [ ] **ENGINE-04**: Downloads land in the per-user cache and are triggered only from the UI, never inside the worker/job
+- [x] **ENGINE-03**: The engine picker shows install state and download-footprint badges (e.g. "Ready" / "~2.4 GB, downloads on first use")
+- [x] **ENGINE-04**: Downloads land in the per-user cache and are triggered only from the UI, never inside the worker/job
 
 ### Voice Management
 
 - [x] **VOICE-01**: User can browse a Piper voice catalog (from the voices manifest) in-app
-- [ ] **VOICE-02**: User can download and install catalog voices without using a terminal
+- [x] **VOICE-02**: User can download and install catalog voices without using a terminal
 - [ ] **VOICE-03**: User can preview a voice (pre-recorded sample if not downloaded; live synthesis if installed)
 - [ ] **VOICE-04**: User can manually import a downloaded Piper voice (`.onnx` + `.onnx.json`) via the UI
-- [ ] **VOICE-05**: User can select the voice per job
+- [x] **VOICE-05**: User can select the voice per job
 - [ ] **VOICE-06**: User can edit a voice's labels or add custom ones (persisted across restart, UI-only) — building on the Phase 3 voice-attribute layer — and browse/select voices across engines in one place
 - [ ] **VOICE-07**: User can uninstall an installed voice from the UI (confirmed, with freed space shown; blocked while the voice is a current per-job choice or per-engine default) and clean up partial/interrupted download files (per-item and a bulk "clean up partial downloads" action)
 
@@ -132,13 +132,13 @@ Each v1 requirement maps to exactly one phase.
 | NATIVE-05 | Phase 3 | Complete |
 | ENGINE-01 | Phase 4 | Complete |
 | ENGINE-02 | Phase 4 | Complete |
-| ENGINE-03 | Phase 4 | Pending |
-| ENGINE-04 | Phase 4 | Pending |
+| ENGINE-03 | Phase 4 | Complete |
+| ENGINE-04 | Phase 4 | Complete |
 | VOICE-01 | Phase 4 | Complete |
-| VOICE-02 | Phase 4 | Pending |
+| VOICE-02 | Phase 4 | Complete |
 | VOICE-03 | Phase 4 | Pending |
 | VOICE-04 | Phase 4 | Pending |
-| VOICE-05 | Phase 4 | Pending |
+| VOICE-05 | Phase 4 | Complete |
 | VOICE-06 | Phase 4 | Pending |
 | VOICE-07 | Phase 4 | Pending |
 | HEAVY-01 | Phase 5 | Pending |

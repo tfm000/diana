@@ -155,7 +155,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 — owns 5_Settings.py)*
 
-- [ ] 04-03-PLAN.md — WALKING SLICE: Settings st.tabs + Voices hub; one Piper voice installs end-to-end (badge + disk-check + threaded byte-progress + md5 install + cancel/resume + selectable) (D-09, ENGINE-02/03/04, VOICE-02/05) — *blocking human-verify*
+- [x] 04-03-PLAN.md — WALKING SLICE: Settings st.tabs + Voices hub; one Piper voice installs end-to-end (badge + disk-check + threaded byte-progress + md5 install + cancel/resume + selectable) (D-09, ENGINE-02/03/04, VOICE-02/05) — DONE (bfde02b feat + 3 in-plan deviations 02f2eca/55e87f9/9c36960; human-verify APPROVED; suite 428 passed / 6 skipped / 1 deselected). Full "Show all" browse/preview/import is 04-04; cross-engine browser/labels is 04-05.
 
 **Wave 4** *(blocked on Wave 3 — same-file 5_Settings.py)*
 
@@ -229,7 +229,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Foundation & Privacy Toggle | 4/4 | In Progress (all plans implemented; awaiting phase verifier / roadmap-update pass) | - |
 | 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
 | 3. Native OS TTS (New Default) | 3/5 | In Progress|  |
-| 4. Engine Management & Voice Catalog | 2/6 | In Progress|  |
+| 4. Engine Management & Voice Catalog | 3/6 | In Progress|  |
 | 5. Heavy Opt-In Engines | 0/TBD | Not started | - |
 | 6. Packaging & First-Class Windows | 0/TBD | Not started | - |
 | 7. Production Hardening | 0/TBD | Not started | - |
