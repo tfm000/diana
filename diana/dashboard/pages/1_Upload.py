@@ -86,6 +86,13 @@ def _engine_readiness(engine_name: str) -> tuple[bool, str]:
         if install_state.heavy_engine_installed("orpheus"):
             return True, "Ready — Orpheus is installed."
         return False, "~2.3 GB+, install Orpheus in Settings ▸ Voices."
+    if engine_name == "f5":
+        # Heavy opt-in engine (HEAVY-02): a pure filesystem probe of the shared torch
+        # venv + marker (NO torch/f5_tts import here — ENGINE-01 / D-17). The Convert
+        # fail-fast (heavy_engine_failfast) already gates an uninstalled F5 job (D-16).
+        if install_state.heavy_engine_installed("f5"):
+            return True, "Ready — F5-TTS is installed."
+        return False, "~1.5 GB+ (torch + model), install F5 in Settings ▸ Voices."
     return False, ""
 
 

@@ -42,6 +42,12 @@ def _get_engine_class(engine_name: str):
         # import does NOT pull orpheus_cpp/llama_cpp onto the cheap enumeration path.
         from diana.tts.orpheus_engine import OrpheusEngine
         return OrpheusEngine
+    if engine_name == "f5":
+        # Lazy: f5_engine's module top is heavy-import-free (ENGINE-01), so this import
+        # does NOT pull torch/f5_tts onto the cheap enumeration path (D-17). The SDK
+        # lives only in heavy_workers/f5_worker.py, run by the torch venv's own python.
+        from diana.tts.f5_engine import F5Engine
+        return F5Engine
     cls = _ENGINE_CLASSES.get(engine_name)
     if cls is None:
         raise ValueError(f"Unknown TTS engine: {engine_name}")
@@ -68,6 +74,11 @@ def create_engine(config: DianaConfig, engine_name: str | None = None):
         # initialize() fail-fasts (D-16) when the engine is not installed.
         from diana.tts.orpheus_engine import OrpheusEngine
         engine = OrpheusEngine()
+    elif engine_name == "f5":
+        # No config model paths — F5 self-locates the shared torch venv + the bundled
+        # default clip via paths. initialize() fail-fasts (D-16) when not installed.
+        from diana.tts.f5_engine import F5Engine
+        engine = F5Engine()
     else:
         raise ValueError(f"Unknown TTS engine: {engine_name}")
 
