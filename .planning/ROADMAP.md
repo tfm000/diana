@@ -209,7 +209,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5)*
 
-- [ ] 05-06-PLAN.md — Reusable engine-agnostic Custom Voices section: capture/upload + clip validation + cloning (HEAVY-02, D-11..D-14)
+- [x] 05-06-PLAN.md — Reusable engine-agnostic Custom Voices section: capture/upload + clip validation + cloning (HEAVY-02, D-11..D-14)
 
 **Wave 7** *(blocked on Wave 6)*
 
@@ -259,6 +259,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
 | 3. Native OS TTS (New Default) | 3/5 | In Progress|  |
 | 4. Engine Management & Voice Catalog | 6/6 | Complete   | 2026-06-15 |
-| 5. Heavy Opt-In Engines | 5/7 | In Progress|  |
+| 5. Heavy Opt-In Engines | 6/7 | In Progress|  |
 | 6. Packaging & First-Class Windows | 0/TBD | Not started | - |
 | 7. Production Hardening | 0/TBD | Not started | - |
