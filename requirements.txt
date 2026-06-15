@@ -17,6 +17,13 @@ piper-tts>=1.0.0
 pydub>=0.25.1
 audioop-lts>=0.2.1; python_version>="3.13"
 
+# Windows native TTS (WinRT) — Windows-only C-extensions; platform-gated so
+# macOS/Linux installs and the 3.10-3.13 CI matrix never try to build them.
+winrt-Windows.Media.SpeechSynthesis>=3.2.1; sys_platform == "win32"
+winrt-runtime>=3.2.1; sys_platform == "win32"
+winrt-Windows.Storage.Streams>=3.2.1; sys_platform == "win32"
+winrt-Windows.Foundation>=3.2.1; sys_platform == "win32"
+
 # Configuration
 pyyaml>=6.0
 
