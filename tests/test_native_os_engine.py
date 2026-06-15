@@ -160,11 +160,41 @@ async def test_winrt_synth_reads_buffer():
     """win32 branch awaits the WinRT synth API and returns bytes via the buffer.
 
     Mirrors test_piper_engine's mock-the-SDK approach: inject fake winrt modules
-    and force `_platform='win32'`, then assert the branch produces bytes (the
-    `bytearray(buffer)` path, NOT DataReader) without a real Windows runtime.
+    and force `_platform='win32'`, then assert the branch produces bytes via the
+    `bytes(bytearray(buffer))` path (NOT DataReader) without a real Windows
+    runtime. The fake `synthesize_text_to_stream_async` / `read_async` are async
+    so the branch's bare `await` (NOT create_task) is exercised, and the fake
+    `Buffer` is a real `bytearray` so the buffer-protocol read is what produces
+    the returned bytes — a DataReader path would never touch this buffer.
     """
+    payload = b"RIFF\x00\x00\x00\x00WAVEfmt "
+
+    async def _fake_synth_to_stream(_text):
+        stream = MagicMock()
+        stream.size = len(payload)
+
+        async def _fake_read_async(buf, _size, _opts):
+            # WinRT read_async fills the passed buffer in place; our fake Buffer
+            # is a bytearray, so write the payload into it (buffer-protocol path).
+            buf[: len(payload)] = payload
+            return MagicMock()
+
+        stream.read_async = _fake_read_async
+        return stream
+
+    synth_instance = MagicMock()
+    synth_instance.synthesize_text_to_stream_async = _fake_synth_to_stream
+    # `synth.options.speaking_rate = ...` must not blow up (MagicMock attr set is fine).
+
     speech_mod = MagicMock()
+    speech_mod.SpeechSynthesizer = MagicMock(return_value=synth_instance)
+
     streams_mod = MagicMock()
+    # Fake Buffer(size) -> a real, sized bytearray (implements the buffer protocol),
+    # so `bytes(bytearray(buf))` returns exactly what read_async wrote.
+    streams_mod.Buffer = lambda size: bytearray(size)
+    streams_mod.InputStreamOptions = MagicMock()
+
     fake_modules = {
         "winrt": MagicMock(),
         "winrt.windows": MagicMock(),
@@ -176,11 +206,9 @@ async def test_winrt_synth_reads_buffer():
     eng = NativeOSEngine()
     eng._platform = "win32"
     with patch.dict(sys.modules, fake_modules):
-        try:
-            data = await eng.synthesize("hi", voice="", speed=1.0)
-        except (AttributeError, TypeError, NotImplementedError) as exc:
-            pytest.skip(f"WinRT branch surface differs from scaffold mock: {exc!r}")
+        data = await eng.synthesize("hi", voice="", speed=1.0)
     assert isinstance(data, (bytes, bytearray))
+    assert bytes(data) == payload          # bytes came from the bytearray(buffer) path
 
 
 # --- NATIVE-02: SAPI5-only detection sets the D-11 flag (mocked) -------------

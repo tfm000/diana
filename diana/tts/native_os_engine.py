@@ -174,6 +174,9 @@ class NativeOSEngine:
     def __init__(self) -> None:
         self._platform = sys.platform   # "darwin" | "win32" | other
         self._voice_cache: list[TTSVoice] | None = None
+        # D-11: set True by _winrt_list_voices when no OneCore (neural) voice is
+        # present, so the Windows picker can surface the visible SAPI5-only note.
+        self._sapi5_only = False
 
     def initialize(self) -> None:
         if self._platform == "darwin":
@@ -256,17 +259,98 @@ class NativeOSEngine:
     def shutdown(self) -> None:
         self._voice_cache = None
 
-    # --- Windows WinRT path: stubbed here, implemented in Plan 05 --------------
+    # --- Windows WinRT path (RESEARCH Patterns 3-4) ----------------------------
     # The macOS path above is complete and importable on a Mac with no winrt
-    # installed. These methods fill in next slice (same file). Plan 05: replace
-    # the NotImplementedError bodies with the RESEARCH Pattern 3/4 WinRT calls
-    # (bytearray(buffer); get_all_voices(); "OneCore" in id tier inference).
+    # installed. The three methods below speak through the Windows WinRT
+    # SpeechSynthesizer: synth via `await synthesize_text_to_stream_async` +
+    # `bytes(bytearray(buffer))` (the Python buffer protocol — the maintainer-
+    # recommended path, avoiding the slow stream-reader helper, and a bare await
+    # rather than wrapping the awaitable in a task); enumeration mapping
+    # VoiceInformation -> TTSVoice with tier inferred from "OneCore" in the voice
+    # Id; default = get_default_voice().id.
+    #
+    # ASSUMPTION A1 (MEDIUM, Windows-UAT-pinned): the exact PyWinRT snake_case
+    # member spelling — `get_all_voices()` (vs `.all_voices`), `get_default_voice()`
+    # (vs `default_voice`), the `synth.voice = v` setter, `synthesize_text_to_stream_async`,
+    # `.options.speaking_rate`, `.display_name` — is documented (pywinrt.readthedocs.io,
+    # MS Learn) but UNVERIFIABLE on macOS (the winrt-* C-extensions don't build here).
+    # It is verified/corrected on a real Windows box in Plan 05 Task 3 UAT
+    # (see 03-05-WINDOWS-UAT-DEFERRED.md). If `dir(SpeechSynthesizer)` shows
+    # different names, this is the single most likely fix point — adjust these
+    # three methods to match the real spelling and re-run.
+    #
+    # winrt imports are LAZY inside each method (never module-top) — matches
+    # Diana's lazy-SDK convention and the `; sys_platform == 'win32'` gating, so
+    # `import diana.tts.native_os_engine` stays clean on macOS/Linux.
 
     async def _winrt_synth(self, text: str, voice: str, speed: float) -> bytes:
-        raise NotImplementedError("Windows WinRT path implemented in Plan 05")
+        """Synthesize one chunk via Windows WinRT and return WAV bytes.
+
+        A bare ``await`` is used on the WinRT awaitable (PyWinRT ``_async``
+        methods are awaitable but not real coroutines, so they must not be
+        wrapped in a task). Bytes are read out of the ``SpeechSynthesisStream``
+        via the Python buffer protocol (``bytes(bytearray(buf))``) rather than a
+        stream-reader helper (maintainer guidance,
+        github.com/pywinrt/python-winsdk#41). The stream is already a WAV
+        container, so the bytes are written straight to a ``.wav`` chunk.
+        """
+        from winrt.windows.media.speechsynthesis import SpeechSynthesizer
+        from winrt.windows.storage.streams import Buffer, InputStreamOptions
+
+        synth = SpeechSynthesizer()
+        if voice:                                   # empty id => OS default (D-02)
+            for v in SpeechSynthesizer.get_all_voices():
+                if v.id == voice:
+                    synth.voice = v
+                    break
+        # speed 0.5-2.0 maps directly into SpeakingRate's 0.5-6.0 range (default 1.0).
+        synth.options.speaking_rate = max(0.5, min(6.0, speed))
+
+        stream = await synth.synthesize_text_to_stream_async(text)   # bare await
+        size = stream.size
+        buf = Buffer(size)
+        await stream.read_async(buf, size, InputStreamOptions.NONE)
+        return bytes(bytearray(buf))                 # Python buffer protocol read
 
     def _winrt_list_voices(self) -> list[TTSVoice]:
-        raise NotImplementedError("Windows WinRT path implemented in Plan 05")
+        """Enumerate Windows voices, inferring tier from the voice Id (D-06).
+
+        Maps each ``VoiceInformation`` to a ``TTSVoice``. ``VoiceInformation`` has
+        no quality/tier property, so tier is inferred from the registry path
+        carried in the Id: OneCore neural voices register under ``Speech_OneCore``
+        => "standard"; legacy SAPI5 voices under ``Speech\\Voices`` => "compact".
+        Sets the D-11 ``self._sapi5_only`` flag when no OneCore voice is present.
+        """
+        from winrt.windows.media.speechsynthesis import SpeechSynthesizer, VoiceGender
+
+        voices: list[TTSVoice] = []
+        for v in SpeechSynthesizer.get_all_voices():
+            vid = v.id or ""
+            voices.append(TTSVoice(
+                id=vid,
+                name=v.display_name,
+                language=(v.language or "").lower(),       # e.g. "en-us"
+                gender="female" if v.gender == VoiceGender.FEMALE else "male",
+                tier="standard" if "OneCore" in vid else "compact",
+                bilingual=False,                            # WinRT voices single-language
+            ))
+        # D-11: flag SAPI5-only (no neural OneCore voice present) for the UI note.
+        self._sapi5_only = self.is_sapi5_only(voices)
+        return voices
 
     def _winrt_default_voice_id(self) -> str:
-        raise NotImplementedError("Windows WinRT path implemented in Plan 05")
+        """Return the OS system default voice id (D-02)."""
+        from winrt.windows.media.speechsynthesis import SpeechSynthesizer
+
+        return SpeechSynthesizer.get_default_voice().id
+
+    @staticmethod
+    def is_sapi5_only(voices: list[TTSVoice]) -> bool:
+        """True when NO voice is a neural OneCore voice (D-11 SAPI5-only state).
+
+        A clean Windows image may ship only legacy SAPI5 voices (David/Zira),
+        whose Ids live under ``Speech\\Voices`` and contain no ``OneCore`` token.
+        When that is the case the picker surfaces the visible D-11 note and the
+        D-10 download hint, while still producing audio (NATIVE-04).
+        """
+        return not any("OneCore" in (v.id or "") for v in voices)
