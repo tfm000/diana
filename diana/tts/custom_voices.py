@@ -158,6 +158,26 @@ def validate_clip(audio_path: str, transcript: str) -> tuple[bool, str]:
     return True, f"Looks good ({duration:.1f}s reference clip)."
 
 
+def _ext_for_src(audio_src) -> str:
+    """Derive the audio file extension from the upload source, defaulting to ``.wav``.
+
+    Checks the ``name`` attribute on an ``st.file_uploader`` / ``st.audio_input``
+    ``UploadedFile`` (or any object that exposes ``.name``), and on a filesystem
+    path (``str`` / ``Path``). Returns the lower-case suffix when it is in the
+    allow-list (``.wav``, ``.mp3``), otherwise falls back to ``.wav``.
+    """
+    name = None
+    if hasattr(audio_src, "name"):  # UploadedFile from st.file_uploader
+        name = audio_src.name
+    elif isinstance(audio_src, (str, Path)):
+        name = str(audio_src)
+    if name:
+        ext = Path(name).suffix.lower()
+        if ext in (".wav", ".mp3"):
+            return ext
+    return ".wav"
+
+
 def _slug(display_name: str) -> str:
     """A filesystem-safe, lowercase id slug derived from a display name.
 
@@ -171,18 +191,18 @@ def _slug(display_name: str) -> str:
 
 
 def _unique_id(slug: str) -> str:
-    """Dedupe a slug against existing ``<id>.wav`` files (append ``-2``/``-3``/…).
+    """Dedupe a slug against existing ``<id>.wav`` and ``<id>.mp3`` files.
 
     The filesystem IS the index (the ``list_installed_piper_voice_ids`` lane), so a new
-    voice that would collide with an existing clip gets a numeric suffix. Lazy ``paths``
-    import keeps the module import-light.
+    voice that would collide with an existing clip (in either supported format) gets a
+    numeric suffix. Lazy ``paths`` import keeps the module import-light.
     """
     from diana import paths
 
     cv_dir = paths.custom_voices_dir()
     candidate = slug
     n = 2
-    while (cv_dir / f"{candidate}.wav").exists():
+    while any((cv_dir / f"{candidate}{ext}").exists() for ext in (".wav", ".mp3")):
         candidate = f"{slug}-{n}"
         n += 1
     return candidate
@@ -237,8 +257,13 @@ def save_custom_voice(
         return False, "Please give the voice a name."
 
     voice_id = _unique_id(_slug(name))
+    # Preserve the real extension from the upload source so synthesis engines that
+    # choose their audio decoder by file extension (F5, Fish) receive the correct
+    # format signal.  soundfile.info() reads magic bytes, not the extension, so
+    # validation always reflects the actual content regardless of extension.
+    clip_ext = _ext_for_src(audio_src)
     try:
-        wav_dest = safe_custom_voice_dest(f"{voice_id}.wav")
+        wav_dest = safe_custom_voice_dest(f"{voice_id}{clip_ext}")
         txt_dest = safe_custom_voice_dest(f"{voice_id}.txt")
     except ValueError as e:
         return False, str(e)
@@ -311,8 +336,15 @@ def list_custom_voices(db_path: str | None = None, engine=None) -> list[TTSVoice
     if not cv_dir.exists():
         return []
     voices: list[TTSVoice] = []
-    for wav in sorted(cv_dir.glob("*.wav")):
-        vid = wav.stem
+    # Collect all clip files (.wav and .mp3), deduplicated by stem so a voice saved
+    # under either extension appears exactly once in the list.
+    seen: set[str] = set()
+    clips = sorted(cv_dir.glob("*.wav")) + sorted(cv_dir.glob("*.mp3"))
+    for clip in sorted(clips, key=lambda p: p.stem):
+        vid = clip.stem
+        if vid in seen:
+            continue
+        seen.add(vid)
         voices.append(
             TTSVoice(
                 id=vid,
@@ -329,22 +361,25 @@ def list_custom_voices(db_path: str | None = None, engine=None) -> list[TTSVoice
 def custom_voice_ref(voice_id: str, db_path: str | None = None) -> tuple[str, str]:
     """Return ``(ref_file, ref_text)`` for a custom voice — an engine's clone reference.
 
-    The clip path (``custom_voices_dir()/<id>.wav``) plus the saved transcript
-    (``<id>.txt`` contents). Consumed by a cloning engine's ``_resolve_ref`` (F5 now,
-    Fish in 05-07) to pass the reference out-of-process to the torch venv. Raises
-    ``ValueError`` for an unknown id (no clip on disk) so a stale selection fails
-    legibly rather than synthesizing silence. ``db_path`` is accepted for symmetry but
-    the reference is purely filesystem (the transcript lives beside the clip).
+    The clip path (``custom_voices_dir()/<id>.<ext>``) plus the saved transcript
+    (``<id>.txt`` contents). Probes ``.wav`` then ``.mp3`` so voices saved in either
+    format are resolved correctly. Consumed by a cloning engine's ``_resolve_ref``
+    (F5 now, Fish in 05-07) to pass the reference out-of-process to the torch venv.
+    Raises ``ValueError`` for an unknown id (no clip on disk in any supported format)
+    so a stale selection fails legibly rather than synthesizing silence. ``db_path``
+    is accepted for symmetry but the reference is purely filesystem (the transcript
+    lives beside the clip).
     """
     from diana import paths
 
     cv_dir = paths.custom_voices_dir()
-    wav = cv_dir / f"{voice_id}.wav"
     txt = cv_dir / f"{voice_id}.txt"
-    if not wav.exists():
-        raise ValueError(f"Unknown custom voice: {voice_id!r}")
-    ref_text = txt.read_text(encoding="utf-8").strip() if txt.exists() else ""
-    return str(wav), ref_text
+    for ext in (".wav", ".mp3"):
+        clip = cv_dir / f"{voice_id}{ext}"
+        if clip.exists():
+            ref_text = txt.read_text(encoding="utf-8").strip() if txt.exists() else ""
+            return str(clip), ref_text
+    raise ValueError(f"Unknown custom voice: {voice_id!r}")
 
 
 def remove_custom_voice(db_path: str, engine, voice_id: str) -> int:
@@ -372,7 +407,9 @@ def remove_custom_voice(db_path: str, engine, voice_id: str) -> int:
 
     cv_dir = paths.custom_voices_dir()
     freed = 0
-    for name in (f"{voice_id}.wav", f"{voice_id}.txt"):
+    # Remove the clip file in whichever supported format it was saved (.wav or .mp3),
+    # plus the transcript sidecar.
+    for name in (f"{voice_id}.wav", f"{voice_id}.mp3", f"{voice_id}.txt"):
         target = cv_dir / name  # basename-joined, scoped to the per-user dir (T-05-PATH)
         if target.exists():
             freed += target.stat().st_size

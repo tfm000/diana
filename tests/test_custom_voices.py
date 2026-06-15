@@ -176,6 +176,53 @@ def test_custom_voice_metadata_roundtrip(tmp_path, tmp_data_paths, temp_clip):
     assert target not in _ids_of(_list_voices(db, "f5"))
 
 
+# --- CR-02: an mp3-named upload is saved with .mp3 extension, not .wav ------
+@pytest.mark.skipif(not _CRUD_AVAILABLE, reason="custom-voice CRUD lands in Wave 5")
+def test_save_mp3_named_upload_resolves_mp3_dest(tmp_path, tmp_data_paths, temp_clip):
+    """An upload with .mp3 in its name lands as <id>.mp3, not <id>.wav (CR-02).
+
+    Synthesis engines (F5, Fish) choose their decoder by file extension.  Saving an
+    MP3 upload as .wav causes a silent extension mismatch that only fails at synthesis
+    time.  The fix: _ext_for_src derives the extension from audio_src.name so the
+    on-disk file carries the correct suffix.  custom_voice_ref must then resolve it.
+    """
+    import io
+
+    db = str(tmp_path / "diana.db")
+    init_db(db)
+
+    # Write a real WAV clip but expose it as an upload object whose .name ends in .mp3
+    # (simulating an st.file_uploader result for an MP3 file).
+    wav, txt = temp_clip(seconds=3.0)
+    raw_bytes = wav.read_bytes()
+
+    class _FakeUpload(io.BytesIO):
+        name = "reference.mp3"
+
+    upload = _FakeUpload(raw_bytes)
+
+    ok, msg = _save_voice(db, "f5", "Mp3 Voice", upload, txt.read_text())
+    assert ok, f"save_custom_voice rejected the mp3-named upload: {msg}"
+
+    # The saved clip must resolve from custom_voice_ref and appear in list_custom_voices.
+    import diana.tts.custom_voices as _cv
+
+    # custom_voice_ref should find the .mp3 file (not fail looking for .wav)
+    from diana import paths as _paths
+
+    cv_dir = _paths.custom_voices_dir()
+    mp3_files = list(cv_dir.glob("*.mp3"))
+    assert mp3_files, "save_custom_voice must write <id>.mp3, not <id>.wav, for an mp3 upload"
+
+    vid = mp3_files[0].stem
+    ref_path, ref_text = _cv.custom_voice_ref(vid)
+    assert ref_path.endswith(".mp3"), f"custom_voice_ref must return the .mp3 path, got {ref_path}"
+
+    # list_custom_voices must enumerate the mp3-backed voice
+    listed_ids = _ids_of(_list_voices(db, "f5"))
+    assert vid in listed_ids, "list_custom_voices must enumerate mp3-backed custom voices"
+
+
 # --- T-04-LBLJSON: a malformed stored value degrades, never crashes ---------
 @pytest.mark.skipif(not _LIST_AVAILABLE, reason="list_custom_voices lands in Wave 5")
 def test_list_custom_voices_tolerates_malformed_json(tmp_path, tmp_data_paths):
