@@ -12,7 +12,11 @@ happens on the enumeration path.
 """
 
 from diana.tts.base import TTSVoice
-from diana.tts.catalog import voice_label_for_id
+from diana.tts.catalog import (
+    _format_piper_name,
+    _parse_piper_id,
+    voice_label_for_id,
+)
 from diana.tts.install_state import list_installed_piper_voice_ids
 from diana.tts.piper_engine import PiperEngine
 from diana.tts.registry import get_engine_voices
@@ -117,15 +121,18 @@ def test_get_engine_voices_piper_no_installed_returns_static(tmp_path, monkeypat
     assert {v.id for v in voices} == {v.id for v in PiperEngine.VOICES}
 
 
-# --- Labeling: catalog entry preferred, else derived from the id convention --
+# --- Labeling: catalog fields kept, display name ALWAYS id-formatted (04-03 fix) --
 def test_voice_label_for_id_uses_bundled_catalog():
-    """A catalogued id gets the richer bundled-manifest label (en_US -> en-us)."""
+    """A catalogued id keeps the catalog's language/tier but the DISPLAY name is the
+    uniform static-matching form built from the id, NOT the raw manifest name."""
     voice = voice_label_for_id("en_US-lessac-medium")
 
     assert voice.id == "en_US-lessac-medium"
     assert voice.language == "en-us"
-    assert voice.tier == "medium"        # manifest "quality" -> tier
-    assert voice.name == "lessac"        # manifest "name"
+    assert voice.tier == "medium"        # manifest "quality" -> tier (kept from catalog)
+    # 04-03 Bug B: even though this id IS catalogued (raw manifest name "lessac"),
+    # the display name matches the static PiperEngine.VOICES format exactly.
+    assert voice.name == "Lessac (US Medium)"
 
 
 def test_voice_label_for_id_derives_when_not_catalogued():
@@ -147,3 +154,50 @@ def test_voice_label_for_id_tolerates_nonconforming_id():
     assert voice.id == "customvoice"
     assert voice.name == "customvoice"   # id used as-is when it can't be parsed
     assert voice.tier == "standard"
+
+
+# --- 04-03 Bug B: uniform display name matching the static format -------------
+def test_voice_label_catalogued_name_matches_static_format():
+    """A catalogued voice's DISPLAY name matches the static PiperEngine.VOICES form.
+
+    Regression for the 04-03 defect: catalogued installed voices showed the raw
+    lowercase manifest name ("lessac") with no "(REGION Quality)" descriptor instead
+    of the static "Lessac (US Medium)". The static and catalogued labels must agree.
+    """
+    voice = voice_label_for_id("en_US-lessac-medium")
+    static = {v.id: v for v in PiperEngine.VOICES}["en_US-lessac-medium"]
+    assert voice.name == static.name == "Lessac (US Medium)"
+
+
+def test_voice_label_catalogued_keeps_catalog_tier_in_name():
+    """A catalogued x_low voice formats its real tier (kept from the catalog entry)."""
+    voice = voice_label_for_id("it_IT-riccardo-x_low")
+    assert voice.name == "Riccardo (IT X_Low)"
+    assert voice.tier == "x_low"          # catalog tier preserved, not overwritten
+    assert voice.language == "it-it"      # catalog language preserved
+
+
+def test_format_piper_name_multi_token_speaker():
+    """The pure formatter Title-cases a multi-token speaker and matches the format."""
+    assert (
+        _format_piper_name("northern_english_male", "GB", "high")
+        == "Northern English Male (GB High)"
+    )
+    # No region -> the parenthetical carries the quality alone (graceful).
+    assert _format_piper_name("lessac", "", "medium") == "Lessac (Medium)"
+
+
+def test_voice_label_derived_multi_token_speaker_matches_format():
+    """A derived (uncatalogued) multi-token id formats exactly like the static voices."""
+    voice = voice_label_for_id("en_GB-northern_english_male-high")
+    assert voice.name == "Northern English Male (GB High)"
+    assert voice.tier == "high"
+    assert voice.language == "en-gb"
+
+
+def test_parse_piper_id_returns_none_for_nonconforming():
+    """The shared id parser returns None for an id with fewer than 3 parts (no crash)."""
+    assert _parse_piper_id("customvoice") is None
+    assert _parse_piper_id("foo-bar") is None
+    # A conforming id parses into (language, speaker, tier, region).
+    assert _parse_piper_id("en_US-lessac-medium") == ("en-us", "lessac", "medium", "US")

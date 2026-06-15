@@ -8,6 +8,7 @@ import streamlit as st
 
 from diana.config import get_config
 from diana.dashboard.sidebar import get_icon_image, setup_sidebar
+from diana.dashboard.voice_cache import cached_voices as _cached_voices
 from diana.database import create_job, get_setting, init_db, set_setting
 from diana.llm.registry import get_llm_config
 from diana.models import Job, JobStatus, parse_page_range
@@ -18,25 +19,12 @@ from diana.tts.native_os_engine import (
 )
 from diana.tts.registry import (
     create_engine,
-    get_engine_voices,
     list_engines,
     resolve_default_voice,
     resolve_engine_name,
 )
 
 logger = logging.getLogger(__name__)
-
-
-@st.cache_data(show_spinner=False)
-def _cached_voices(engine_name: str):
-    """Enumerate an engine's voices once per engine, cached across reruns (D-04).
-
-    native_os shells `say -v '?'` to enumerate; without this cache that subprocess
-    would re-run on every keystroke in the search box (Pattern 6 / threat T-03-12).
-    TTSVoice is a plain dataclass, so it is picklable and cache-safe. config is read
-    fresh inside (not a cache arg) — only the engine name keys the cache.
-    """
-    return get_engine_voices(engine_name, config=get_config())
 
 
 def _system_language_first(voices, system_lang):

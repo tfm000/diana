@@ -9,6 +9,8 @@ import streamlit as st
 from diana import paths
 from diana.config import get_config, save_config
 from diana.dashboard.sidebar import get_icon_image, setup_sidebar
+from diana.dashboard.voice_cache import cached_voices as _cached_voices
+from diana.dashboard.voice_cache import clear_voice_cache
 from diana.database import get_setting, set_setting
 from diana.downloads.downloader import download_file, has_space
 from diana.tts import catalog, install_state
@@ -18,24 +20,12 @@ from diana.tts.native_os_engine import (
     resolve_selected_voice_id,
 )
 from diana.tts.registry import (
-    get_engine_voices,
     list_engines,
     resolve_default_voice,
 )
 from diana.utils import detect_device_theme
 
 logger = logging.getLogger(__name__)
-
-
-@st.cache_data(show_spinner=False)
-def _cached_voices(engine_name: str):
-    """Enumerate an engine's voices once per engine, cached across reruns (D-04).
-
-    st.tabs renders ALL tab bodies on every run (they are not lazy), so the Voices
-    tab and the General tab both pull voices on each rerun — caching keeps tab
-    switching from re-shelling ``say`` (T-03-12 / RESEARCH lines 516-525).
-    """
-    return get_engine_voices(engine_name, config=get_config())
 
 
 @st.cache_data(show_spinner=False)
@@ -201,8 +191,16 @@ def _render_download_progress(voice_id: str) -> None:
     row to "Resume" until some unrelated rerun. When this poll observes that the
     worker has just reached a terminal state, it requests a single FULL rerun
     (``st.rerun()``) so the action column re-renders Resume on its own; the 0.5s
-    cadence keeps the page responsive (no busy-loop) and ``done`` is left to the
-    fragment alone (the body already shows the "Installed" disabled button).
+    cadence keeps the page responsive (no busy-loop).
+
+    The install-DONE transition is treated the same way (04-03 install->use fix): on
+    the FIRST poll that sees ``done`` for this voice, the shared voice-enumeration
+    cache is cleared (``clear_voice_cache``) and a single full ``st.rerun()`` fires so
+    the just-installed voice appears in the Settings Default-Voice picker AND the
+    Upload picker WITHOUT an app restart. The ``_dl_terminal_seen`` guard makes both
+    the clear and the rerun happen exactly once per completed install, never on every
+    0.5s poll. The cache clear runs HERE on the script thread — never on the download
+    worker thread, which stays ``st.*``-free (T-04-SRC).
     """
     dl_state = st.session_state.get("dl_state", {})
     state = dl_state.get(voice_id)
@@ -225,14 +223,22 @@ def _render_download_progress(voice_id: str) -> None:
             text=f"{state['downloaded'] / 1e6:.1f} / {total / 1e6:.1f} MB",
         )
 
-    # Trigger ONE full rerun when the worker has just reached a terminal interrupted
-    # state (errored or cancel-acknowledged) so the main-body action column flips to
-    # "Resume" without needing an unrelated click. Guard with a per-voice flag so we
-    # rerun exactly once per terminal transition (no rerun storm).
+    # Trigger ONE full rerun when the worker has just reached a terminal state so the
+    # main-body action column flips (errored/cancelled -> "Resume"; done -> the picker
+    # refresh below) without needing an unrelated click. Guard with a per-voice flag so
+    # we act exactly once per terminal transition (no rerun storm).
     _seen = st.session_state.setdefault("_dl_terminal_seen", set())
-    _is_terminal = bool(state["error"]) or bool(state.get("cancelled"))
+    _is_terminal = (
+        bool(state["error"]) or bool(state.get("cancelled")) or bool(state["done"])
+    )
     if _is_terminal and voice_id not in _seen:
         _seen.add(voice_id)
+        # On a completed install, drop the shared voice cache so the new voice appears
+        # in BOTH the Upload and Settings Default-Voice pickers on the next run without
+        # an app restart (04-03 install->use fix). Errored/cancelled records leave the
+        # cache untouched — nothing landed on disk to enumerate.
+        if state["done"]:
+            clear_voice_cache()
         st.rerun()
     elif not _is_terminal and voice_id in _seen:
         # A fresh attempt (Resume) reset the record — allow the next terminal rerun.

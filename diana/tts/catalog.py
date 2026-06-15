@@ -172,36 +172,75 @@ def _bundled_voices_by_id() -> dict[str, TTSVoice]:
         return {}
 
 
+def _format_piper_name(speaker_token: str, region: str, tier_token: str) -> str:
+    """Pure formatter for a Piper voice display name: ``"<Speaker> (<REGION> <Quality>)"``.
+
+    Matches the static ``PiperEngine.VOICES`` convention EXACTLY (Title-cased speaker,
+    space before the parenthetical, REGION uppercased, quality Title-cased, NO comma):
+    ``("lessac", "US", "medium") -> "Lessac (US Medium)"`` and
+    ``("northern_english_male", "GB", "high") -> "Northern English Male (GB High)"``.
+    With no region the parenthetical carries the quality alone.
+    """
+    readable = speaker_token.replace("_", " ").strip().title()
+    quality = tier_token.title()
+    if region:
+        return f"{readable} ({region} {quality})"
+    return f"{readable} ({quality})"
+
+
+def _parse_piper_id(voice_id: str) -> tuple[str, str, str, str] | None:
+    """Split a Piper ``{lang}-{name}-{quality}`` id into ``(language, speaker, tier, region)``.
+
+    Pure id-convention parse shared by ``_derive_piper_voice`` and the catalogued
+    branch of ``voice_label_for_id``. Folds the language the same way the manifest
+    parser does (``en_US -> en-us``); the trailing token is the quality tier only
+    when it is a known Piper quality (``x_low|low|medium|high``), otherwise it is
+    treated as part of the speaker name and the tier defaults to ``standard``. The
+    region is the uppercased country sub-tag of the first part (``en_US -> US``),
+    or ``""`` when the language has no ``_`` sub-tag. Returns ``None`` for a
+    non-conforming id (fewer than 3 ``-``-separated parts), so callers can fall back
+    gracefully without crashing.
+    """
+    parts = voice_id.split("-")
+    if len(parts) < 3:
+        return None
+    if parts[-1] in _PIPER_QUALITY_TIERS:
+        tier = parts[-1]
+        speaker_token = parts[-2]
+    else:
+        tier = "standard"
+        speaker_token = parts[-1]
+    language = parts[0].replace("_", "-").lower()  # en_US -> en-us
+    region = parts[0].split("_")[-1].upper() if "_" in parts[0] else ""
+    return language, speaker_token, tier, region
+
+
 def _derive_piper_voice(voice_id: str) -> TTSVoice:
     """Derive a readable TTSVoice from the Piper ``{lang}-{name}-{quality}`` id.
 
     Pure fallback for an installed voice that is NOT in the bundled manifest (e.g.
     a hand-imported one). Splits ``en_US-lessac-medium`` into language ``en-us``
-    (the same ``en_US -> en-us`` fold the manifest parser uses), a readable name,
-    and a quality tier from the trailing ``x_low|low|medium|high`` token. A
-    non-conforming id still yields a usable voice (id as name, ``standard`` tier),
-    so enumeration never crashes on an unexpected filename.
+    (the same ``en_US -> en-us`` fold the manifest parser uses), a readable name in
+    the static ``PiperEngine.VOICES`` format (``_format_piper_name``), and a quality
+    tier from the trailing ``x_low|low|medium|high`` token. A non-conforming id still
+    yields a usable voice (id as name, ``standard`` tier), so enumeration never
+    crashes on an unexpected filename.
     """
-    parts = voice_id.split("-")
-    language = "unknown"
-    tier = "standard"
-    name = voice_id
+    parsed = _parse_piper_id(voice_id)
+    if parsed is None:
+        return TTSVoice(
+            id=voice_id,
+            name=voice_id,
+            language="unknown",
+            gender="unknown",
+            tier="standard",
+            bilingual=False,
+        )
 
-    if len(parts) >= 3:
-        # Trailing token is the quality tier when it is a known Piper quality.
-        if parts[-1] in _PIPER_QUALITY_TIERS:
-            tier = parts[-1]
-            name_token = parts[-2]
-        else:
-            name_token = parts[-1]
-        language = parts[0].replace("_", "-").lower()  # en_US -> en-us
-        readable = name_token.replace("_", " ").strip().title()
-        region = parts[0].split("_")[-1].upper() if "_" in parts[0] else ""
-        name = f"{readable} ({region} {tier.title()})" if region else f"{readable} ({tier.title()})"
-
+    language, speaker_token, tier, region = parsed
     return TTSVoice(
         id=voice_id,
-        name=name,
+        name=_format_piper_name(speaker_token, region, tier),
         language=language,
         gender="unknown",   # the Piper id convention does not encode gender
         tier=tier,
@@ -212,12 +251,32 @@ def _derive_piper_voice(voice_id: str) -> TTSVoice:
 def voice_label_for_id(voice_id: str) -> TTSVoice:
     """Best available TTSVoice label for an installed Piper voice id (pure/cheap).
 
-    Prefers the richer bundled-manifest entry when the id is catalogued; otherwise
-    derives a sensible label from the Piper ``{lang}-{name}-{quality}`` convention
-    (``_derive_piper_voice``). Reuses the catalog parse via a cached by-id map — it
-    does NOT re-parse inline, and touches no engine SDK (ENGINE-01).
+    The DISPLAY name is ALWAYS built from the Piper ``{lang}-{name}-{quality}`` id
+    convention (``_format_piper_name``) so installed voices read uniformly and match
+    the static ``PiperEngine.VOICES`` format ("Lessac (US Medium)"), whether or not
+    the id is catalogued — the bundled manifest's raw ``name`` ("lessac") is NOT used
+    for display. When the id IS catalogued the richer/accurate ``language``/``tier``/
+    ``gender``/``bilingual`` from the catalog entry are kept; only ``name`` is
+    overridden with the formatted one. A non-conforming id that cannot be parsed
+    falls back to the catalog name (or the id) and never crashes. Reuses the catalog
+    parse via a cached by-id map and touches no engine SDK (ENGINE-01).
     """
     catalogued = _bundled_voices_by_id().get(voice_id)
-    if catalogued is not None:
+    if catalogued is None:
+        return _derive_piper_voice(voice_id)
+
+    parsed = _parse_piper_id(voice_id)
+    if parsed is None:
+        # Non-conforming id: keep the catalog entry as-is (its name, or the id).
         return catalogued
-    return _derive_piper_voice(voice_id)
+    _language, speaker_token, tier, region = parsed
+    # Keep the catalog's richer fields; override only the display name with the
+    # formatted, static-matching form built from the id convention.
+    return TTSVoice(
+        id=catalogued.id,
+        name=_format_piper_name(speaker_token, region, catalogued.tier or tier),
+        language=catalogued.language,
+        gender=catalogued.gender,
+        tier=catalogued.tier,
+        bilingual=catalogued.bilingual,
+    )
