@@ -1,0 +1,93 @@
+{
+  "en_US-lessac-medium": {
+    "key": "en_US-lessac-medium",
+    "name": "lessac",
+    "language": {
+      "code": "en_US",
+      "family": "en",
+      "region": "US",
+      "name_native": "English",
+      "name_english": "English",
+      "country_english": "United States"
+    },
+    "quality": "medium",
+    "num_speakers": 1,
+    "speaker_id_map": {},
+    "files": {
+      "en/en_US/lessac/medium/en_US-lessac-medium.onnx": {
+        "size_bytes": 63201294,
+        "md5_digest": "2fc642b535197b6305c7c8f92dc8b24f"
+      },
+      "en/en_US/lessac/medium/en_US-lessac-medium.onnx.json": {
+        "size_bytes": 4885,
+        "md5_digest": "c1f2b7bddefe113f3255ff9ef234cfd3"
+      },
+      "en/en_US/lessac/medium/MODEL_CARD": {
+        "size_bytes": 351,
+        "md5_digest": "42f2dd4a98149e12fc70b301d9579dfd"
+      }
+    },
+    "aliases": ["en-us-lessac-medium"]
+  },
+  "en_GB-alan-medium": {
+    "key": "en_GB-alan-medium",
+    "name": "alan",
+    "language": {
+      "code": "en_GB",
+      "family": "en",
+      "region": "GB",
+      "name_native": "English",
+      "name_english": "English",
+      "country_english": "Great Britain"
+    },
+    "quality": "medium",
+    "num_speakers": 1,
+    "speaker_id_map": {},
+    "files": {
+      "en/en_GB/alan/medium/en_GB-alan-medium.onnx": {
+        "size_bytes": 63104638,
+        "md5_digest": "9b9d2a9b8b6f4c0c8c1d2e3f4a5b6c7d"
+      },
+      "en/en_GB/alan/medium/en_GB-alan-medium.onnx.json": {
+        "size_bytes": 4821,
+        "md5_digest": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+      }
+    },
+    "aliases": ["en-gb-alan-medium"]
+  },
+  "de_DE-thorsten_emotional-medium": {
+    "key": "de_DE-thorsten_emotional-medium",
+    "name": "thorsten_emotional",
+    "language": {
+      "code": "de_DE",
+      "family": "de",
+      "region": "DE",
+      "name_native": "Deutsch",
+      "name_english": "German",
+      "country_english": "Germany"
+    },
+    "quality": "medium",
+    "num_speakers": 8,
+    "speaker_id_map": {
+      "amused": 0,
+      "angry": 1,
+      "disgusted": 2,
+      "drunk": 3,
+      "neutral": 4,
+      "sleepy": 5,
+      "surprised": 6,
+      "whisper": 7
+    },
+    "files": {
+      "de/de_DE/thorsten_emotional/medium/de_DE-thorsten_emotional-medium.onnx": {
+        "size_bytes": 63507686,
+        "md5_digest": "5f6e7d8c9b0a1f2e3d4c5b6a7f8e9d0c"
+      },
+      "de/de_DE/thorsten_emotional/medium/de_DE-thorsten_emotional-medium.onnx.json": {
+        "size_bytes": 5234,
+        "md5_digest": "0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f"
+      }
+    },
+    "aliases": ["de-de-thorsten_emotional-medium"]
+  }
+}
