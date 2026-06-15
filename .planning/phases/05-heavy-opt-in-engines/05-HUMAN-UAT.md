@@ -166,3 +166,90 @@ When a human has run steps 1–4 on an install-capable machine and confirms F5 i
 behind the accepted license (no terminal, no re-prompt), synthesizes the default voice by
 ear, leaves the default engines unchanged, AND confirms the Q-E provenance (step 6), this
 item is satisfied. Until then it remains DEFERRED (carried, not failed).
+
+---
+
+## HEAVY-02 — Custom Voices cloning (real F5 clone by ear) (Plan 05-06)
+
+- **Plan:** 05-06 (reusable engine-agnostic Custom Voices library + F5 cloning from a
+  saved custom voice — D-11..D-14)
+- **Status:** DEFERRED (real F5-clone synthesis ONLY) — the capture/upload, validation,
+  save/name/remove, and picker/browser appearance ARE exercised this session; the actual
+  by-ear F5 clone of a saved custom voice was not (NOT a defect, NOT a silent skip)
+- **Deferred at:** 2026-06-15
+- **Reason:** Cloning a saved custom voice runs the F5 model in the multi-GB `torch` venv,
+  which is impractical to install + run in an automated `--auto` session on this macOS dev
+  box (the same constraint as the 05-05 F5 install above). Per the Task-3 checkpoint
+  authorization ("a real F5 clone is environment-dependent: if not feasible on the
+  verifying machine, write the steps into 05-HUMAN-UAT.md and resume — deferred UAT, not a
+  defect — the validation/save logic is automated-tested"), ONLY the real-clone step is
+  carried forward; everything around it is verified below.
+
+### What IS verified (automated + agent pre-check — no torch, fully exercised this session)
+
+- **Custom Voices library logic** — `tests/test_custom_voices.py` (flipped skip→PASS, 10
+  tests): `validate_clip` accepts a ~3 s **16 kHz** clip + transcript (sub-24 kHz OK,
+  Pitfall 5/7), rejects an empty/whitespace transcript, a sub-1 s clip, and an
+  unreadable/junk file — each returning a `(False, msg)` tuple and **NEVER raising**
+  (the import-rejection discipline, D-13/T-05-VAL); `safe_custom_voice_dest` strips path
+  components, enforces a `.wav`/`.mp3`/`.txt` allow-list, and raises `ValueError` on a
+  traversal / disallowed extension (T-05-PATH); save→list→remove round-trips a named voice
+  over a temp DB, and malformed `app_settings` metadata degrades to the id rather than
+  crashing enumeration (T-05-LBLJSON).
+- **Engine-agnostic storage (D-11)** — storage keys are `voice.custom.<id>` (NO engine
+  segment) and `list_custom_voices()` takes no required engine arg — one shared pool that
+  Fish reuses in 05-07. Verified by the key grep + the round-trip test.
+- **Picker + cross-engine browser appearance (D-14)** — `tests/test_custom_voices_apptest.py`
+  (3 PASS): a saved custom voice appears in `registry.get_engine_voices("f5")` (the Upload
+  picker source) AND `registry.all_engine_voices()` (the **Browse all voices** cross-engine
+  table source) alongside the bundled `f5_default`, and is removable — with NO
+  `torch`/`f5_tts`/`torchaudio`/`vocos` imported on the enumeration path (ENGINE-01 / D-17).
+- **UI surfaces (interaction-level AppTest)** — `tests/test_custom_voices_apptest.py`: the
+  Settings ▸ Voices **Custom Voices** section renders BOTH input methods — an upload path
+  (audio `file_uploader` + a transcript `text_area`/`.txt`) AND an in-app capture path
+  (`st.audio_input` + a transcript `text_area`) — D-11; clip validation rejects an empty
+  transcript and an unreadable clip with a clear message and never crashes the page (D-13).
+- **F5 clone wiring (D-14, subprocess mocked)** — `F5Engine._resolve_ref(<custom-id>)`
+  resolves a saved custom voice through `custom_voices.custom_voice_ref` to its
+  `custom_voices_dir()/<id>.wav` clip + `<id>.txt` transcript, which `synthesize` then
+  passes as stdin JSON DATA to the torch-venv worker (the existing T-05-CMD path from
+  05-05). The handoff is verified by the 05-05 `tests/test_f5_engine.py` synth test; only
+  the real torch inference is deferred here.
+
+### What is NOT verified (needs a human, on a machine where the F5 torch venv is installed)
+
+Run these on a real install-capable machine (no terminal required for any step — that is
+the point of HEAVY-02). F5 must already be installed (see the 05-05 HEAVY-02 item above).
+
+1. **Save a custom voice via in-app recording.** Open **Settings ▸ Voices ▸ Custom
+   Voices ▸ Record a clip**. Use the in-app recorder to record a few seconds of clear
+   speech, type the **exact** transcript of what you said, give the voice a name, and click
+   **Add recorded voice**. Confirm a green success message, that the voice appears under
+   **Your saved custom voices**, and that it also appears in the **Browse all voices** table
+   above (tagged F5).
+2. **Save a custom voice via upload + validation rejections.** On the **Upload a clip**
+   tab, upload a short `.wav`/`.mp3` (about 2–12 s) + a transcript (typed or a `.txt`),
+   name it, and click **Add custom voice** — confirm success. Then deliberately try a bad
+   input (an empty transcript, or a sub-1 s clip) and confirm it is **rejected with a clear
+   message and the page does not crash**.
+3. **Clone by ear (the deferred core).** Go to **Upload**, select the **F5** engine and
+   **your saved custom voice** (not the bundled default). Upload a short `.txt` and click
+   **Convert to Audio**. Confirm the job completes and the audio **sounds like the cloned
+   voice** (verified by ear) — recognizably your reference voice, not silence, not the
+   bundled default, not a different engine.
+4. **Reusable across jobs.** Convert a second short `.txt` with the same custom voice and
+   confirm it is still selectable and clones consistently (the voice persists — D-14).
+5. **Remove with in-use block + freed space.** In the Custom Voices library, click
+   **Remove** on a voice that is NOT a current job's choice → **Confirm remove**; confirm it
+   reports freed space and disappears from the library, the Upload picker, and the
+   Browse-all table. Then confirm a voice that IS a pending/in-progress job's choice (or set
+   as the F5 default) is **refused** with a "switch to another voice first" message
+   (delete nothing).
+
+### Resume signal
+
+When a human has run steps 1–5 on an F5-installed machine and confirms a custom voice can
+be captured (record + upload), validated (good accepted, bad rejected with a message),
+cloned by ear, reused across jobs, and removed (with the in-use block honored), this item
+is satisfied. Until then it remains DEFERRED (carried, not failed) — the surrounding
+capture/validation/save/remove/enumeration logic is automated-test-covered above.
