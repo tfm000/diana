@@ -159,7 +159,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 — same-file 5_Settings.py)*
 
-- [ ] 04-04-PLAN.md — Full catalog browse (curated flat / show-all grouped + reused filters) + preview (sample/fetch/live) + dual-path manual import (D-01/03/12/13, VOICE-01/03/04) — *blocking human-verify*
+- [x] 04-04-PLAN.md — Full catalog browse (curated flat / show-all grouped + reused filters) + preview (sample/fetch/live) + dual-path manual import (D-01/03/12/13, VOICE-01/03/04) — DONE (f4b06ce feat catalog helpers + 77ebedc feat browse/preview/import; 0 deviations; suite 429 passed / 5 skipped / 1 deselected). Human-verify: browse + both preview modes (steps 1-3) APPROVED; manual-import UX (steps 4-5, VOICE-04) deferred to manual UAT — validation logic automated-tested (test_voice_import green), no external Piper pair available 2026-06-15. Cross-engine browser/labels is 04-05; uninstall + Kokoro is 04-06.
 
 **Wave 5** *(blocked on Wave 4 — same-file 5_Settings.py)*
 
@@ -229,7 +229,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Foundation & Privacy Toggle | 4/4 | In Progress (all plans implemented; awaiting phase verifier / roadmap-update pass) | - |
 | 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
 | 3. Native OS TTS (New Default) | 3/5 | In Progress|  |
-| 4. Engine Management & Voice Catalog | 3/6 | In Progress|  |
+| 4. Engine Management & Voice Catalog | 4/6 | In Progress|  |
 | 5. Heavy Opt-In Engines | 0/TBD | Not started | - |
 | 6. Packaging & First-Class Windows | 0/TBD | Not started | - |
 | 7. Production Hardening | 0/TBD | Not started | - |

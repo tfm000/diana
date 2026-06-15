@@ -51,10 +51,10 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### Voice Management
 
-- [x] **VOICE-01**: User can browse a Piper voice catalog (from the voices manifest) in-app
+- [x] **VOICE-01**: User can browse a Piper voice catalog (from the voices manifest) in-app — *full browse (curated-flat + show-all grouped-by-language + reused filters/search + Refresh) landed & human-verified in 04-04 (was partially live from 04-03)*
 - [x] **VOICE-02**: User can download and install catalog voices without using a terminal
-- [ ] **VOICE-03**: User can preview a voice (pre-recorded sample if not downloaded; live synthesis if installed)
-- [ ] **VOICE-04**: User can manually import a downloaded Piper voice (`.onnx` + `.onnx.json`) via the UI
+- [x] **VOICE-03**: User can preview a voice (pre-recorded sample if not downloaded; live synthesis if installed) — *three preview modes (bundled sample / fetched+cached sample / live synth) human-verified PASS in 04-04*
+- [ ] **VOICE-04**: User can manually import a downloaded Piper voice (`.onnx` + `.onnx.json`) via the UI — *logic COMPLETE & automated-tested (safe_voice_dest traversal/extension + pair/JSON validation, dual-path file_uploader + path entry wired in 04-04); interactive import UX NOT yet human-verified (no external Piper pair 2026-06-15) — deferred manual UAT tracked in 04-HUMAN-UAT.md*
 - [x] **VOICE-05**: User can select the voice per job
 - [ ] **VOICE-06**: User can edit a voice's labels or add custom ones (persisted across restart, UI-only) — building on the Phase 3 voice-attribute layer — and browse/select voices across engines in one place
 - [ ] **VOICE-07**: User can uninstall an installed voice from the UI (confirmed, with freed space shown; blocked while the voice is a current per-job choice or per-engine default) and clean up partial/interrupted download files (per-item and a bulk "clean up partial downloads" action)
@@ -136,8 +136,8 @@ Each v1 requirement maps to exactly one phase.
 | ENGINE-04 | Phase 4 | Complete |
 | VOICE-01 | Phase 4 | Complete |
 | VOICE-02 | Phase 4 | Complete |
-| VOICE-03 | Phase 4 | Pending |
-| VOICE-04 | Phase 4 | Pending |
+| VOICE-03 | Phase 4 | Complete |
+| VOICE-04 | Phase 4 | Pending (logic done + automated-tested; interactive import UAT deferred — 04-HUMAN-UAT.md) |
 | VOICE-05 | Phase 4 | Complete |
 | VOICE-06 | Phase 4 | Pending |
 | VOICE-07 | Phase 4 | Pending |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed Phase 04 Plan 03 (walking slice — Settings st.tabs + Voices hub; one Piper voice installs end-to-end and is selectable; human-verify APPROVED)
-last_updated: "2026-06-15T15:00:41.000Z"
-last_activity: 2026-06-15 -- Completed Phase 04 Plan 03 (walking slice: tabbed Settings + Voices hub + one-Piper-voice threaded install -> selectable)
+stopped_at: Completed Phase 04 Plan 04 (full catalog browse + 3-mode preview + dual-path manual import; human-verify browse+preview APPROVED, manual-import UX deferred to UAT — logic automated-tested)
+last_updated: "2026-06-15T15:20:00.000Z"
+last_activity: 2026-06-15 -- Completed Phase 04 Plan 04 (full catalog browse: curated-flat / show-all grouped-by-language + reused filters/search + Refresh; 3-mode preview; validated dual-path import)
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 19
-  completed_plans: 16
-  percent: 84
+  completed_plans: 17
+  percent: 89
 ---
 
 # Project State
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-05-29)
 ## Current Position
 
 Phase: 04 (engine-management-voice-catalog) — EXECUTING
-Plan: 4 of 6
-Status: Executing Phase 04 (04-01 + 04-02 + 04-03 complete; Wave 3 walking slice landed — tabbed Settings + one-Piper-voice install proven end-to-end through the UI)
-Last activity: 2026-06-15 -- Completed Phase 04 Plan 03 (walking slice: tabbed Settings + Voices hub + one-Piper-voice threaded install -> selectable)
+Plan: 5 of 6
+Status: Executing Phase 04 (04-01..04-04 complete; Wave 4 landed full catalog browse + 3-mode preview + validated dual-path import; browse+preview human-verified, manual-import UX deferred to UAT). Next: 04-05 (cross-engine browser + editable labels), Wave 5.
+Last activity: 2026-06-15 -- Completed Phase 04 Plan 04 (full catalog browse: curated-flat / show-all grouped-by-language + reused filters/search + Refresh; 3-mode preview; validated dual-path import)
 
-Progress: [████████░░] 84% (16/19 plans complete; Phase 04 walking slice landed — substrate proven end-to-end through the real UI against the real network)
+Progress: [█████████░] 89% (17/19 plans complete; Phase 04 discover+preview+import half landed — full browse, three preview modes, and validated manual import on top of the Wave-3 install slice)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 16
+- Total plans completed: 17
 - Average duration: ~5 min implementation (plus blocking human-verify checkpoint gaps)
-- Total execution time: ~1.3 hours active
+- Total execution time: ~1.4 hours active
 
 **By Phase:**
 
@@ -49,8 +49,8 @@ Progress: [████████░░] 84% (16/19 plans complete; Phase 04 w
 
 **Recent Trend:**
 
-- Last 5 plans: 03-04 (~9min impl, wall ~25h spanning blocking human-verify, 1 deviation), 03-05 (~4min impl, Task 3 Windows UAT deferred), 04-01 (~9min, 0 deviations), 04-02 (~7min), 04-03 (~58min impl, wall ~1h spanning blocking human-verify, 3 in-plan deviations)
-- Trend: 04-03 was the most deviation-heavy plan to date — 3 Rule-1 integration bugs surfaced at the blocking human-verify checkpoint (Resume terminal-state, Piper install→use enumeration, no-restart cache + uniform names), all fixed in-plan and re-verified. Consistent with the Phase-1/3 pattern that integration/UX defects surface at human-verify, not during autonomous impl; the higher count reflects the first-of-its-kind thread+st.fragment pattern (no in-repo precedent) meeting the real install→use→display flow. Deviation #2 was deliberately built as the shared enumeration foundation 04-05 reuses (no duplication).
+- Last 5 plans: 03-05 (~4min impl, Task 3 Windows UAT deferred), 04-01 (~9min, 0 deviations), 04-02 (~7min), 04-03 (~58min impl, wall ~1h spanning blocking human-verify, 3 in-plan deviations), 04-04 (~6min impl, 0 deviations; browse+preview human-verified, manual-import UX deferred to UAT)
+- Trend: 04-04 swung back to a clean run — 0 deviations, suite 428→429 (the Plan-01 test_voice_import HARD-03 scaffold flipped skip→pass when safe_voice_dest landed). Notably the human-verify checkpoint surfaced NO defects this time (vs 04-03's 3), because 04-04 composes already-proven Wave-2/3 substrate (catalog data layer + install machinery + Phase-3 filters reused VERBATIM) rather than introducing a first-of-its-kind pattern. The one open item is a DEFERRED manual UAT (VOICE-04 import UX) — not a defect: the import validation logic is automated-tested green; only the interactive upload/path UX is unverified because no external Piper .onnx+.onnx.json pair was on hand. Two consecutive plans now carry a deferred manual-UAT (03-05 Windows, 04-04 import) — both honestly tracked, neither blocking.
 
 *Updated after each plan completion*
 | Phase 01 P02 | ~24min | 3 tasks | 8 files |
@@ -68,6 +68,7 @@ Progress: [████████░░] 84% (16/19 plans complete; Phase 04 w
 | Phase 04 P01 | ~9min | 3 tasks (3 auto; zero deviations) | 10 files (8 created: 7 scaffolds + manifest fixture; 2 modified: base.py + pyproject.toml — matches files_modified) |
 | Phase 04 P04-02 | ~7min | 2 tasks | 7 files |
 | Phase 04 P03 | ~58min impl (wall ~1h spanning blocking human-verify) | 2 tasks (1 auto + 1 blocking checkpoint; checkpoint surfaced 3 in-plan Rule-1 deviations) | 9 files (plan named only 5_Settings.py; effective set = 5_Settings.py + 1_Upload.py + voice_cache.py[new] + registry.py + install_state.py + catalog.py + 3 new test files) |
+| Phase 04 P04 | ~6min impl (wall ~10min spanning blocking human-verify) | 3 tasks (2 auto + 1 blocking checkpoint; 0 deviations; checkpoint steps 1-3 APPROVED, steps 4-5 import deferred to UAT) | 3 files (matches files_modified exactly: catalog.py + 5_Settings.py + data/samples/.gitkeep[new]; no scope expansion) |
 
 ## Accumulated Context
 
@@ -127,6 +128,10 @@ Recent decisions affecting current work:
 - [Phase 04 plan 03, deviation #1 Rule-1 bug surfaced during human-verify]: Resume never appeared after Cancel because cancellation was not a terminal state (only in-flight vs done/error), so an interrupted install could not be resumed (defeating D-06). Fixed by adding a `cancelled` terminal marker + pure _download_action/_can_spawn_download helpers (unit-tested) so the flow is Cancel→"Cancelling…"→Resume and Resume offsets from the existing .part rather than restarting at 0 (D-06/D-07). Commit 02f2eca; new tests/test_settings_downloads.py.
 - [Phase 04 plan 03, deviation #2 Rule-1 bug surfaced during human-verify]: Installed Piper voices did not appear in the Upload/Settings pickers (VOICE-05 unmet in practice) because get_engine_voices("piper") returned only static PiperEngine.VOICES. Fixed by adding install_state.list_installed_piper_voice_ids() (cheap model-dir glob) + a DYNAMIC piper branch in registry.get_engine_voices that MERGES static + installed ids (deduped, Kokoro files excluded), labeled via catalog.voice_label_for_id — cheap filesystem probe, NO heavy onnxruntime/piper import (ENGINE-01). This is the shared enumeration foundation 04-05's all_engine_voices builds on (built once here so 04-05 does not duplicate it). Commit 55e87f9; new tests/test_piper_enumeration.py.
 - [Phase 04 plan 03, deviation #3 Rule-1 bug surfaced during human-verify]: (A) Even after deviation #2, a freshly installed voice required an app restart to appear because the per-page @st.cache_data _cached_voices served a stale list; (B) installed-voice display names did not match static PiperEngine.VOICES formatting. Fixed by (A) unifying the per-page caches into a shared diana/dashboard/voice_cache.py and calling clear_voice_cache() from the SCRIPT thread on the install-done transition (no restart; worker thread stays st.*-free), and (B) pure _format_piper_name/_parse_piper_id in catalog.py so installed names format uniformly as "Lessac (US Medium)". Commit 9c36960; new tests/test_voice_cache.py + extended test_piper_enumeration.py. (Effective files_modified for 04-03 = 5_Settings.py + 1_Upload.py + voice_cache.py[new] + registry.py + install_state.py + catalog.py + 3 new test files — the plan frontmatter had named only 5_Settings.py.) Full "Show all" catalog browse/preview/import is Wave 4 (04-04); cross-engine browser + editable labels + Upload-dropdown badges is Wave 5 (04-05).
+- [Phase 04 plan 04]: Full catalog BROWSE (VOICE-01/D-01/D-03) — the Voices tab gained a "Show all voices" toggle: default (off) renders curated_subset(load_bundled_manifest()) as a FLAT offline list; on, it sources the refreshable manifest and renders group_by_language as collapsible st.expander sections, with a "Refresh catalog" button calling refresh_catalog() (degrades to bundled on failure, Pitfall 6). BOTH views reuse the Phase-3 filter_voices/order_by_quality helpers VERBATIM (no new filter defined, D-03) with the language selectbox options derived from the MANIFEST languages (not OS voices) + a quality selectbox + a name search.
+- [Phase 04 plan 04]: Three-mode PREVIEW (VOICE-03/D-12) — installed voice -> live synthesis via the existing create_engine->synthesize->st.audio path (1_Upload.py); not-installed curated voice -> bundled sample clip from diana/data/samples/; any other not-installed voice -> fetch_sample downloads+caches speaker_0.mp3 (so repeat previews are instant/offline) then st.audio. A missing/404 sample is messaged gracefully, not crashed. sample_url_for/fetch_sample are pure Streamlit-free helpers in catalog.py.
+- [Phase 04 plan 04]: Validated dual-path IMPORT (VOICE-04/D-13/HARD-03) — st.file_uploader(accept_multiple_files=True) for the .onnx+.onnx.json pair AND a path-entry text_input for a local file, BOTH routed through safe_voice_dest (RESEARCH Pattern 5 / 1_Upload.py idiom VERBATIM: os.path.basename + resolved-prefix-under-model_dir containment + .onnx/.onnx.json allow-list — T-04-PATH). The pair must be complete (shared base) and the .onnx.json must parse as JSON before any copy (T-04-PAIR); rejection is messaged not crashed. file_uploader is bounded by server.maxUploadSize (T-04-MEMUP/Pitfall 7); the path-entry option sidesteps the cap for large local .onnx. Both files land side-by-side in model_dir() so PiperVoice.load auto-loads the sibling .onnx.json — selectable with NO engine edit. safe_voice_dest is Streamlit-free + unit-tested (the Plan-01 test_voice_import HARD-03 scaffold flipped skip->pass; suite 428->429).
+- [Phase 04 plan 04, DEFERRED manual-UAT — NOT a defect]: At the blocking human-verify checkpoint, browse (curated-flat -> show-all grouped, filters/search, Refresh) + both preview modes (not-installed sample + installed live synth) — steps 1-3 — were APPROVED. The two manual-import steps (4-5: upload + path) were NOT interactively exercised because no external Piper .onnx+.onnx.json pair was available 2026-06-15. This is a deferred verification, not a silent skip and not a defect: the import VALIDATION logic IS covered by passing automated unit tests (test_voice_import green) and the UI wiring is present + parses. VOICE-04's interactive UX is carried forward in .planning/phases/04-engine-management-voice-catalog/04-HUMAN-UAT.md (Settings ▸ Voices ▸ Import from path -> point at any Piper .onnx + sibling .onnx.json -> becomes selectable on Upload; bad import -> clear rejection, not a crash). 0 in-plan deviations. Next: 04-05 (cross-engine browser + editable labels), Wave 5; uninstall + Kokoro is Wave 6 (04-06).
 
 ### Pending Todos
 
@@ -148,9 +153,10 @@ Items acknowledged and carried forward from previous milestone close:
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
 | Windows UAT (blocking) | Phase 03 plan 05 Task 3 — Windows WinRT UAT: pin PyWinRT spelling (A1) + confirm neural synth, picker enumeration, OS default voice, and SAPI5-only D-11 note with zero-download audio on a real Windows 10/11 box. Closes the Windows surface of NATIVE-02/03/04/05. Self-contained checklist: `.planning/phases/03-native-os-tts-new-default/03-05-WINDOWS-UAT-DEFERRED.md` | Pending (user runs after all other phases) | 2026-06-15 (Phase 03) |
+| Manual UAT (non-blocking) | Phase 04 plan 04 (VOICE-04) — interactive manual-import UX (upload + path): point at any Piper `.onnx` + sibling `.onnx.json` -> confirm it validates and becomes selectable on Upload; bad import -> clear rejection, not a crash. NOT a defect — the import validation logic is automated-tested green (test_voice_import); only the interactive Streamlit upload/path UX is unverified (no external Piper pair on hand). Checklist: `.planning/phases/04-engine-management-voice-catalog/04-HUMAN-UAT.md` | Pending (user runs when a Piper pair is available) | 2026-06-15 (Phase 04) |
 
 ## Session Continuity
 
-Last session: 2026-06-15T15:00:41.000Z
-Stopped at: Completed Phase 04 Plan 03 (walking slice — tabbed Settings + Voices hub + one-Piper-voice threaded install proven end-to-end through the UI; human-verify APPROVED; 3 in-plan deviations). Next: 04-04 (full catalog browse + preview + manual import), Wave 4.
+Last session: 2026-06-15T15:20:00.000Z
+Stopped at: Completed Phase 04 Plan 04 (full catalog browse — curated-flat / show-all grouped-by-language + reused Phase-3 filters/search + Refresh; three-mode preview — bundled sample / fetched+cached sample / live synth; validated dual-path manual import via file_uploader + path through safe_voice_dest). Human-verify: browse + both preview modes (steps 1-3) APPROVED; manual-import UX (steps 4-5, VOICE-04) DEFERRED to manual UAT (no external Piper pair 2026-06-15; validation logic automated-tested). 0 in-plan deviations; suite 429 passed / 5 skipped / 1 deselected. Next: 04-05 (cross-engine browser + editable labels + Upload-dropdown badges), Wave 5.
 Resume file: None
