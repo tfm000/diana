@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
+status: executing
 stopped_at: Phase 4 context gathered (Engine Management & Voice Catalog — engine-agnostic management UX + generic download/cache layer proven via Piper+Kokoro; uninstall added)
-last_updated: "2026-06-15T11:39:56.031Z"
-last_activity: 2026-06-15
+last_updated: "2026-06-15T12:32:17.268Z"
+last_activity: 2026-06-15 -- Phase 04 planning complete
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 13
+  total_plans: 19
   completed_plans: 13
   percent: 43
 ---
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-05-29)
 
 Phase: 03 (native-os-tts-new-default) — EXECUTING (all 5 plans implemented; 1 blocking Windows UAT carried forward)
 Plan: 5 of 5 — implementation complete
-Status: Plan 03-05 implementation complete; Task 3 (blocking Windows WinRT UAT) DEFERRED to a real Windows box per user approval — see 03-05-WINDOWS-UAT-DEFERRED.md
-Last activity: 2026-06-15
+Status: Ready to execute
+Last activity: 2026-06-15 -- Phase 04 planning complete
 
 Progress: [██████████] 100% (plans implemented; Windows WinRT UAT pending)
 
