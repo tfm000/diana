@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 1: Foundation & Privacy Toggle** - Remove cloud TTS, migrate storage to per-user dirs, ship per-job LLM-cleaning toggle *(all 4 plans implemented 2026-05-31; awaiting orchestrator phase-verifier / roadmap-update pass for the official close-out)*
 - [x] **Phase 2: Rule-Based Cleaner Overhaul** - Make the LLM-off cleaning path trustworthy, guarded by a golden-corpus suite (completed 2026-06-01)
 - [ ] **Phase 3: Native OS TTS (New Default)** - Zero-download default engine using macOS `say` / Windows WinRT neural voices
-- [ ] **Phase 4: Engine Management & Voice Catalog** - On-demand model downloads + in-app Piper voice browse/install/preview/import
+- [x] **Phase 4: Engine Management & Voice Catalog** - On-demand model downloads + in-app Piper voice browse/install/preview/import (completed 2026-06-15)
 - [ ] **Phase 5: Heavy Opt-In Engines** - Orpheus, F5-TTS, and GPU-gated Fish S2 Pro as opt-in installs on the shared substrate
 - [ ] **Phase 6: Packaging & First-Class Windows** - Double-click macOS `.app` / Windows `.exe` with bundled ffmpeg and Windows CI
 - [ ] **Phase 7: Production Hardening** - Worker lifetime, SQLite retry, security fixes, and an offline smoke test as the release gate
@@ -167,7 +167,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 — same-file 5_Settings.py)*
 
-- [ ] 04-06-PLAN.md — Uninstall (confirm + freed space + in-use block) + partial cleanup (per-item + bulk) + Kokoro model download via the generic layer (D-04/16/17/18/19, VOICE-07, ENGINE-02) — *blocking human-verify*
+- [x] 04-06-PLAN.md — Uninstall (confirm + freed space + in-use block) + partial cleanup (per-item + bulk) + Kokoro model download via the generic layer (D-04/16/17/18/19, VOICE-07, ENGINE-02) — DONE (f6f3dff feat in-use-block + uninstall helpers + Kokoro asset exposure; 7b58c31 feat Voices-tab uninstall/cleanup/Kokoro-download UI; bf53757 fix per-item Remove-partial reachable after Cancel [deviation 1]; 96e6464 feat paginated read-only cross-engine voice table replacing the unusable ~184-row 04-05 list [deviation 2, user-requested usability fix]; suite 432→461 passed / 1 deselected — Plan-01 test_uninstall scaffold flipped skip→pass + new AppTest interaction coverage). Blocking human-verify APPROVED: cross-engine table + uninstall (block + confirm + freed space) + per-item/bulk partial cleanup + native_os no download/uninstall all PASS. D-19 PROVEN — Kokoro single-model download reuses the SAME generic disk-check/resumable/md5/atomic substrate as the Piper per-voice catalog. AppTest-verified pending a live pass (NOT defects, environment-limited): Cancel-mid-download + Kokoro-download-progress. VOICE-07 complete. **Phase 04 CLOSED — 6/6; ALL 19 milestone plans done (100%).**
 
 **UI hint**: yes
 **Note**: management UX (browse/preview/label/badge/install/uninstall) + the download/cache layer are engine-agnostic across present engines (native_os, Kokoro, Piper); the downloadable layer is proven via the Piper catalog + Kokoro model this phase. Heavy engines (Orpheus/F5/Fish) reuse it in Phase 5.
@@ -229,7 +229,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Foundation & Privacy Toggle | 4/4 | In Progress (all plans implemented; awaiting phase verifier / roadmap-update pass) | - |
 | 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
 | 3. Native OS TTS (New Default) | 3/5 | In Progress|  |
-| 4. Engine Management & Voice Catalog | 5/6 | In Progress|  |
+| 4. Engine Management & Voice Catalog | 6/6 | Complete   | 2026-06-15 |
 | 5. Heavy Opt-In Engines | 0/TBD | Not started | - |
 | 6. Packaging & First-Class Windows | 0/TBD | Not started | - |
 | 7. Production Hardening | 0/TBD | Not started | - |
