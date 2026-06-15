@@ -879,6 +879,80 @@ def _parse_tags(raw: str) -> list[str]:
     return out
 
 
+def paginate(items, page: int, page_size: int):
+    """Slice ``items`` into one page — the pure, Streamlit-free pagination core.
+
+    The cross-engine browser filters the FULL merged voice list first, then hands the
+    filtered result here to render only the current page (the ~184-voice list was
+    unusable rendered all at once — the 04-06 checkpoint defect). Returns
+    ``(page_items, total, page, n_pages)`` where:
+
+      - ``total``      is ``len(items)`` (the full filtered count, for the caption).
+      - ``n_pages``    is ``ceil(total / page_size)``, at least 1 (an empty list is one
+                       empty page, so the page control always has a valid 1..n range).
+      - ``page``       is the input page CLAMPED into ``1..n_pages`` — a page beyond the
+                       end (e.g. after a filter shrank the result) clamps to the last
+                       page, and ``0``/negative clamps to ``1``. The clamped value is
+                       returned so the caller can write it back to the page control.
+      - ``page_items`` is the ``page_size``-long slice for the clamped page (the final
+                       page may be shorter).
+
+    Pure: no streamlit, no I/O — mirrors the Phase-3 ``resolve_selected_voice_id``
+    precedent so the slicing/clamping is unit-testable without a ScriptRunContext. A
+    non-positive ``page_size`` is treated as 1 (defensive — never a zero-division).
+    """
+    size = max(1, int(page_size))
+    seq = list(items)
+    total = len(seq)
+    n_pages = max(1, (total + size - 1) // size)
+    page = max(1, min(int(page), n_pages))
+    start = (page - 1) * size
+    return seq[start:start + size], total, page, n_pages
+
+
+def _filter_hash(*parts) -> str:
+    """A stable string fingerprint of the cross-engine filter/page-size selection.
+
+    The browser keeps the current page in ``st.session_state``; whenever the filter
+    tuple (engine / language / quality / search) OR the page size changes, the page
+    must reset to 1 (a filter change re-filters the WHOLE dataset, so a remembered
+    page-3 is meaningless against the new, possibly-shorter result). Hashing the
+    selection into one token lets the caller detect any change with a single equality
+    check. Pure / Streamlit-free so the reset logic is unit-testable.
+    """
+    return "␟".join("" if p is None else str(p) for p in parts)
+
+
+def _voice_table_row(engine: str, voice) -> dict:
+    """One read-only table row for the cross-engine ``st.dataframe`` (D-10).
+
+    Maps an (engine, override-applied voice) pair to the column dict the table shows:
+    Engine, Voice ID, Name, Language, Tier, Gender, Tags (the custom tags joined for
+    display). Pure / Streamlit-free so the column shape is unit-testable. The merged
+    voice is passed in so the displayed attributes/tags already reflect the user's
+    overrides.
+    """
+    return {
+        "Engine": engine,
+        "Voice ID": voice.id,
+        "Name": voice.name,
+        "Language": voice.language or "",
+        "Tier": voice.tier or "",
+        "Gender": voice.gender or "",
+        "Tags": ", ".join(voice.tags),
+    }
+
+
+def _voice_select_label(engine: str, voice) -> str:
+    """The select-to-edit option label for one voice: ``engine · name (id)`` (D-10/D-15).
+
+    Used by the "Select a voice to edit labels" picker below the read-only table so the
+    user can pick any voice in the current FILTERED set and open the existing label
+    editor for it. Pure / Streamlit-free.
+    """
+    return f"{engine} · {voice.name} ({voice.id})"
+
+
 def _render_label_editor(engine: str, base_voice, merged_voice) -> None:
     """Per-voice label/tag editor (D-14/D-15), inside an expander on a browser row.
 
@@ -959,26 +1033,6 @@ def _render_label_editor(engine: str, base_voice, merged_voice) -> None:
                 clear_voice_cache()
                 st.success("Reset to the engine's original labels.")
                 st.rerun()
-
-
-def _render_cross_engine_row(engine: str, base_voice, merged_voice) -> None:
-    """One cross-engine browser row: engine + (overridden) attributes + badge + editor.
-
-    ``merged_voice`` is the override-applied voice (so the displayed attributes, tags,
-    and badge reflect the user's custom labels); ``base_voice`` is the un-merged
-    original passed to the editor so it can show what is being overridden and detect
-    real changes. The label editor is nested per row (D-14/D-15). Mirrors the visual
-    shape of ``_render_voice_row`` (a bordered container) for consistency.
-    """
-    with st.container(border=True):
-        tag_suffix = f" · 🏷 {', '.join(merged_voice.tags)}" if merged_voice.tags else ""
-        st.markdown(
-            f"**{merged_voice.name}**  \n`{engine}` · `{merged_voice.id}` · "
-            f"{merged_voice.language} · {merged_voice.tier} · "
-            f"{merged_voice.gender}{tag_suffix}"
-        )
-        _cross_engine_badge(engine, merged_voice)
-        _render_label_editor(engine, base_voice, merged_voice)
 
 
 def _engine_default_voice(engine_name: str, config_default: str) -> str:
@@ -1280,9 +1334,91 @@ with tab_voices:
             "or the search box to see every voice."
         )
     else:
-        st.caption(f"{len(_visible)} voice{'s' if len(_visible) != 1 else ''} shown.")
-        for _eng, _base_v, _merged_v in _visible:
-            _render_cross_engine_row(_eng, _base_v, _merged_v)
+        # PAGINATED READ-ONLY TABLE (04-06 checkpoint fix). The ~184 cross-engine voices
+        # were unusable rendered all at once; now the FULL filtered set above is sliced
+        # into one page here. The page-size selector + page number live in session_state;
+        # any filter OR page-size change resets to page 1 (a remembered page is
+        # meaningless against a freshly-filtered, possibly-shorter result). The filter
+        # work is ALL done above (over the full dataset) — only the final slice happens
+        # here, so the engine/language/quality/search controls always filter everything,
+        # never just the visible page (the load-bearing requirement).
+        _size_col, _page_col = st.columns([1, 2])
+        with _size_col:
+            _page_size = st.selectbox(
+                "Per page", [25, 50, 100], index=0, key="xeng_page_size",
+                help="How many voices to show per page.",
+            )
+
+        # Reset to page 1 whenever the filter selection OR the page size changes. The
+        # fingerprint folds every filter control + the page size into one token; when it
+        # differs from the last render we drop the remembered page back to 1 BEFORE the
+        # page-number widget is created so the widget shows 1 (D-09 None-safe discipline).
+        _sel_hash = _filter_hash(
+            _xe_engine, _xe_sel_language, _xe_sel_tier, _xe_query, _page_size
+        )
+        if st.session_state.get("_xeng_filter_hash") != _sel_hash:
+            st.session_state["_xeng_filter_hash"] = _sel_hash
+            st.session_state["xeng_page"] = 1
+
+        # Clamp the remembered page into the valid range and WRITE IT BACK before the
+        # page-number widget is created, so the widget's own state is already valid and
+        # we never pass an out-of-range `value=` (which Streamlit warns about when a key
+        # already lives in session_state). paginate() owns the clamp (stale page beyond a
+        # now-shorter result snaps to the last page) so the table never shows empty.
+        _page_items, _total, _page, _n_pages = paginate(
+            _visible, st.session_state.get("xeng_page", 1), _page_size
+        )
+        st.session_state["xeng_page"] = _page
+
+        with _page_col:
+            if _n_pages > 1:
+                # No `value=`: the widget reads the clamped page from session_state by
+                # key, so navigating updates it and the slice below re-reads it.
+                _page = int(st.number_input(
+                    "Page", min_value=1, max_value=_n_pages, step=1,
+                    key="xeng_page",
+                    help=f"{_n_pages} pages of voices.",
+                ))
+                # Re-slice from the (possibly) newly-picked page so the table below
+                # reflects this run's page without waiting for the next rerun.
+                _page_items, _total, _page, _n_pages = paginate(
+                    _visible, _page, _page_size
+                )
+            else:
+                st.caption("Page 1 of 1")
+
+        # The "Showing X–Y of N voices" caption over the read-only table.
+        _start = (_page - 1) * _page_size + 1
+        _end = _start + len(_page_items) - 1
+        st.caption(f"Showing {_start}–{_end} of {_total} voices")
+
+        # Read-only table of THIS page (built-in st.dataframe — no new dependency).
+        # Columns: Engine, Voice ID, Name, Language, Tier, Gender, Tags. Editing happens
+        # in the select-to-edit panel below, not in the table (it is display-only).
+        _table_rows = [_voice_table_row(_eng, _m) for _eng, _b, _m in _page_items]
+        st.dataframe(_table_rows, width="stretch", hide_index=True)
+
+        # SELECT-TO-EDIT (D-14/D-15): pick ANY voice in the current FILTERED set (not
+        # just the visible page) and open the existing per-voice label/tag editor for it.
+        # Options span the whole filtered result so a voice on another page is still
+        # editable without first navigating to its page.
+        st.markdown("##### Edit a voice's labels")
+        _edit_options = {
+            _voice_select_label(_eng, _m): (_eng, _b, _m)
+            for _eng, _b, _m in _visible
+        }
+        _edit_choice = st.selectbox(
+            "Select a voice to edit labels",
+            ["—"] + list(_edit_options.keys()),
+            index=0,
+            key="xeng_edit_select",
+            help="Pick any voice from the filtered list above to rename it, change its "
+                 "language/tier/gender, or add custom tags.",
+        )
+        if _edit_choice != "—":
+            _sel_eng, _sel_base, _sel_merged = _edit_options[_edit_choice]
+            _cross_engine_badge(_sel_eng, _sel_merged)
+            _render_label_editor(_sel_eng, _sel_base, _sel_merged)
 
     # -----------------------------------------------------------------------
     # Engine models (D-19): the engine-level Kokoro model download. native_os is
