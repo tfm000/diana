@@ -20,6 +20,7 @@ from diana.tts.native_os_engine import (
 )
 from diana.tts.registry import (
     create_engine,
+    heavy_engine_failfast,
     list_engines,
     resolve_default_voice,
     resolve_engine_name,
@@ -79,6 +80,12 @@ def _engine_readiness(engine_name: str) -> tuple[bool, str]:
         if install_state.kokoro_model_installed():
             return True, "Ready — the Kokoro model is installed."
         return False, "~80 MB+, the Kokoro model downloads on first use."
+    if engine_name == "orpheus":
+        # Heavy opt-in engine (HEAVY-01): a pure filesystem probe of the per-engine
+        # venv + marker (NO orpheus_cpp/llama_cpp import here — ENGINE-01 / D-17).
+        if install_state.heavy_engine_installed("orpheus"):
+            return True, "Ready — Orpheus is installed."
+        return False, "~2.3 GB+, install Orpheus in Settings ▸ Voices."
     return False, ""
 
 
@@ -361,10 +368,19 @@ if uploaded_file is not None:
         except ValueError as e:
             st.error(f"Invalid page range: {e}")
 
+    # D-16 fail-fast: a heavy engine chosen before it is installed disables Convert
+    # with an actionable "install it in Settings ▸ Voices" prompt, so the job NEVER
+    # starts and never errors mid-conversion. This generic gate (heavy_engine_failfast
+    # -> _HEAVY_ENGINES) already covers orpheus/f5/fish; non-heavy engines are never
+    # gated. Cheap probe only — NO heavy SDK import (ENGINE-01).
+    _failfast = heavy_engine_failfast(engine_name)
+    if _failfast:
+        st.error(_failfast)
+
     if st.button(
         "Convert to Audio",
         type="primary",
-        disabled=st.session_state.get("job_submitted", False),
+        disabled=st.session_state.get("job_submitted", False) or bool(_failfast),
     ):
         st.session_state.job_submitted = True
         job_id = str(uuid.uuid4())
