@@ -86,3 +86,24 @@ def test_above_floor_gpu_capable(fake_nvidia_smi):
     assert vram >= _FISH_MIN_VRAM_GB
     assert not reason, "a capable GPU carries no disabled-reason"
     _assert_no_torch()
+
+
+# --- non-zero returncode -> disabled even if stdout has numeric text ---------
+@pytest.mark.skipif(
+    not _GPU_PROBE_AVAILABLE, reason="capable_nvidia_gpu lands in Wave 6"
+)
+def test_nonzero_returncode_reports_disabled(fake_nvidia_smi):
+    """nvidia-smi exits non-zero -> (False, 0, reason) even if stdout looks numeric.
+
+    A degraded NVIDIA driver may emit partial numeric text on stdout while exiting
+    with a non-zero code. The gate must NOT parse that text — returncode is checked
+    BEFORE parsing so a false-capable result is never returned (CR-01).
+    """
+    # Simulate a GPU that would appear capable (24 GB) if stdout were parsed,
+    # but the driver is degraded and the process exits with code 1.
+    fake_nvidia_smi(int((_FISH_MIN_VRAM_GB + 12) * 1024), returncode=1)
+    ok, vram, reason = _capable_nvidia_gpu()
+    assert ok is False, "a non-zero nvidia-smi exit must return not-capable"
+    assert vram == 0
+    assert reason, "a failed query must carry a reason (D-10)"
+    _assert_no_torch()

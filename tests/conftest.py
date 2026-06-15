@@ -133,24 +133,27 @@ def mock_uv(monkeypatch):
 def fake_nvidia_smi(monkeypatch):
     """Factory simulating ``nvidia-smi`` for the torch-free GPU gate (Pattern 4).
 
-    ``fake_nvidia_smi(total_mib)``:
+    ``fake_nvidia_smi(total_mib, returncode=0)``:
       - ``None``  -> no GPU: ``shutil.which('nvidia-smi')`` returns ``None``.
       - integer   -> a present GPU whose ``--query-gpu=memory.total`` CSV is that
         many MiB (``subprocess.run(...).stdout`` -> ``"<mib>\\n"``).
+      - ``returncode`` (default 0) -> the exit code returned by the fake nvidia-smi;
+        pass a non-zero value to simulate a degraded driver that exits with an error.
     Patches the stdlib ``shutil.which`` / ``subprocess.run`` (which the gate shells)
     so NO torch is imported on the badge path. Returns ``total_mib`` for convenience.
     """
     import shutil as _shutil
     import subprocess as _subprocess
 
-    def _install(total_mib=None):
+    def _install(total_mib=None, returncode=0):
         if total_mib is None:
             monkeypatch.setattr(_shutil, "which", lambda _name: None)
         else:
             monkeypatch.setattr(_shutil, "which", lambda name: f"/usr/bin/{name}")
 
             def _fake_run(cmd, *a, **k):
-                return MagicMock(returncode=0, stdout=f"{int(total_mib)}\n",
+                return MagicMock(returncode=returncode,
+                                 stdout=f"{int(total_mib)}\n",
                                  stderr="")
 
             monkeypatch.setattr(_subprocess, "run", _fake_run)

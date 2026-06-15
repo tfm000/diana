@@ -37,6 +37,8 @@ def capable_nvidia_gpu() -> tuple[bool, float, str]:
             [smi, "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=10,
         )
+        if out.returncode != 0:
+            return False, 0, "could not query GPU memory"
         vram_gb = max(int(x) for x in out.stdout.split()) / 1024
     except Exception:
         return False, 0, "could not query GPU memory"
