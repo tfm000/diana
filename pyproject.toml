@@ -48,3 +48,4 @@ diana = "run:main"
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
+markers = ["network: hits real network endpoints (HF/GitHub); excluded by default"]

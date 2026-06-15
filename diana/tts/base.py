@@ -11,6 +11,7 @@ class TTSVoice:
     gender: str
     tier: str = "standard"   # quality tier: novelty | compact | enhanced | standard/neural
     bilingual: bool = False  # True if the voice speaks multiple/bilingual languages
+    tags: tuple[str, ...] = ()  # custom free-text tags surfaced to filter/search (D-14, populated by Plan 05's voice_labels layer)
 
 
 class TTSEngine(Protocol):
