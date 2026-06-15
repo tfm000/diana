@@ -238,6 +238,85 @@ def test_per_item_remove_partial_clears_one(monkeypatch, tmp_path):
     assert other_part.exists(), "it leaves unrelated .part files alone (bulk handles those)"
 
 
+def _cancelled_dl_state(total: int = 10) -> dict:
+    """A synthesized TERMINAL-cancelled ``dl_state`` record (worker stopped, .part kept).
+
+    Mirrors exactly what the download worker leaves after a Cancel: ``cancel`` True
+    (the UI request) AND ``cancelled`` True (the worker's terminal marker), with some
+    bytes already streamed. ``_download_action`` maps this to ``"resume"`` — the state
+    the human-verify checkpoint exercised. No thread/network: a plain dict the page reads.
+    """
+    return {
+        "downloaded": total // 2, "total": total, "done": False,
+        "error": None, "cancel": True, "cancelled": True,
+    }
+
+
+def test_cancelled_row_offers_both_resume_and_remove_partial(monkeypatch, tmp_path):
+    """The 04-06 checkpoint bug: after Cancel, a row with a ``.part`` must offer BOTH
+    Resume AND Remove partial (the latter was unreachable while ``active`` was True).
+
+    Synthesize the post-Cancel state — a TERMINAL-cancelled ``dl_state`` record plus the
+    kept ``.part`` on disk — then assert the row exposes the two distinct controls. This
+    is the path the orphan-``.part`` test could never hit (it had NO dl_state record).
+    """
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    part = model_dir / f"{_VID}.onnx.part"
+    part.write_bytes(b"half-a-model")
+
+    at, _db, _clear = _run_app(monkeypatch, tmp_path)
+    # Seed the cancelled record the worker would have left, then re-run the page so the
+    # catalog row derives action == "resume" from it (the checkpoint scenario).
+    at.session_state["dl_state"] = {_VID: _cancelled_dl_state()}
+    at.run()
+    assert at.exception is None or len(at.exception) == 0, f"page raised: {at.exception}"
+
+    resume = _btn(at, f"resume_{_VID}")
+    remove = _btn(at, f"rmpart_{_VID}")
+    assert resume is not None, "a cancelled/resumable row must still offer Resume (continue from .part)"
+    assert remove is not None, (
+        "a cancelled/resumable row with a .part must ALSO offer 'Remove partial' "
+        "(the D-18 control was unreachable in this state before the fix)"
+    )
+    assert resume.key != remove.key, "Resume and Remove partial must be distinct controls"
+    assert part.exists(), "merely rendering the row deletes nothing"
+
+
+def test_cancelled_row_remove_partial_unlinks_and_resets_to_install(monkeypatch, tmp_path):
+    """Clicking Remove partial in the cancelled state unlinks the ``.part``, clears the
+    ``dl_state`` record, and the row falls back to Install (not stuck on Resume)."""
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    part = model_dir / f"{_VID}.onnx.part"
+    part.write_bytes(b"half-a-model")
+
+    at, _db, _clear = _run_app(monkeypatch, tmp_path)
+    at.session_state["dl_state"] = {_VID: _cancelled_dl_state()}
+    at.run()
+    assert at.exception is None or len(at.exception) == 0, f"page raised: {at.exception}"
+
+    remove = _btn(at, f"rmpart_{_VID}")
+    assert remove is not None, "the cancelled row offers 'Remove partial'"
+    remove.click().run()
+
+    assert not part.exists(), "Remove partial unlinks this voice's .part"
+    # AppTest's session_state is a custom mapping (no ``.get``); index the dl_state dict
+    # and assert this voice's record was popped (so the row cannot stay stuck on Resume).
+    _dl_state = at.session_state["dl_state"] if "dl_state" in at.session_state else {}
+    assert _VID not in _dl_state, (
+        "Remove partial clears the dl_state record so the row does not stay stuck on Resume"
+    )
+    # With the record gone and the .part deleted, the row is back to Install and no longer
+    # offers Resume. (Assert on the rebuilt action column — the robust reset signal. The
+    # stale ``rmpart`` button lingers in the SAME-run widget snapshot after its handler's
+    # st.rerun(); that is an AppTest capture artifact, not behavior — same caveat as
+    # ``test_uninstall_cancel_keeps_the_file`` — so we assert the action-column reset,
+    # which a clean re-render confirms drops the Remove-partial control too.)
+    assert _btn(at, f"install_{_VID}") is not None, "the row resets to the Install state"
+    assert _btn(at, f"resume_{_VID}") is None, "no Resume once the partial is discarded"
+
+
 def test_bulk_clean_up_partials_removes_all(monkeypatch, tmp_path):
     """The bulk 'Clean up partial downloads' clears every orphaned .part (D-18)."""
     model_dir = tmp_path / "models"

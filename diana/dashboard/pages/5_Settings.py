@@ -784,11 +784,21 @@ def _render_voice_row(voice, entry: dict, speed: float) -> None:
 
         # PARTIAL CLEANUP (D-18) — per item. An interrupted download leaves a
         # ``{voice}.onnx.part``; offer a one-click "Remove partial" to clear just this
-        # one (the bulk action lives below the catalog). Only show it when a partial is
-        # actually present AND no download is in flight for this voice.
-        if not active and _voice_partial_path(voice.id).exists():
+        # one (the bulk action lives below the catalog). Show it whenever a partial is
+        # actually present AND no writer thread is genuinely live — i.e. in the
+        # cancelled/resume state (where the row ALSO offers Resume above), the errored
+        # state, and the orphan (no ``dl_state`` record) case. NEVER while a download is
+        # "downloading"/"cancelling": deleting a ``.part`` under an active write would
+        # corrupt it (Pitfall 3 — keep that guard). ``action`` is the single source of
+        # truth here; an orphan ``.part`` with no record yields ``action == "install"``,
+        # which is (correctly) not blocked.
+        if action not in ("downloading", "cancelling") and _voice_partial_path(voice.id).exists():
             if st.button("Remove partial", key=f"rmpart_{voice.id}"):
                 _voice_partial_path(voice.id).unlink(missing_ok=True)
+                # Clear the in-session record so the row resets to Install rather than
+                # staying stuck on Resume for a now-deleted partial (the dl_state is the
+                # action source; a stale cancelled record would otherwise keep "Resume").
+                st.session_state.get("dl_state", {}).pop(voice.id, None)
                 st.rerun()
 
         # PREVIEW (D-12/VOICE-03): live synth when installed; a bundled or on-demand
