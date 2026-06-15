@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import threading
 from importlib import resources
 from pathlib import Path
@@ -14,8 +15,13 @@ from diana.dashboard.voice_cache import cached_all_engine_voices
 from diana.dashboard.voice_cache import cached_voices as _cached_voices
 from diana.dashboard.voice_cache import clear_voice_cache
 from diana.database import get_setting, set_setting
-from diana.downloads.downloader import download_file, has_space
+from diana.downloads.downloader import clean_partials, download_file, has_space
 from diana.tts import catalog, install_state
+from diana.tts.kokoro_engine import (
+    KOKORO_DEFAULT_VARIANT,
+    KOKORO_MODEL_VARIANTS,
+    kokoro_download_assets,
+)
 from diana.tts.native_os_engine import (
     filter_voices,
     order_by_quality,
@@ -282,6 +288,90 @@ def _start_piper_download(voice_id: str, entry: dict, footprint: int) -> None:
     ).start()
 
 
+# The dl_state key for the engine-level Kokoro model download (D-19). Kokoro is ONE
+# model with many baked-in voices, so it shares the Plan-03 dl_state/thread/fragment
+# machinery under a single synthetic key rather than per-voice rows.
+_KOKORO_DL_KEY = "__kokoro_model__"
+
+
+def _kokoro_install_targets(variant: str) -> list[tuple[str, Path, int | None]]:
+    """The (url, dest, size) tuples to download for one Kokoro install (D-19).
+
+    Reuses ``kokoro_engine.kokoro_download_assets`` (the chosen model variant + the
+    shared voices bin) and lands each into ``paths.model_dir()`` under its canonical
+    filename — exactly where ``config.tts.kokoro.{model,voices}_path`` already point
+    (config.py:32-33), so the engine finds them with zero edit. No md5 is verified for
+    the GitHub-release assets (no published per-file digest); the disk-space pre-check,
+    resumable ``.part`` and atomic ``os.replace`` from the generic layer still apply,
+    and ``voices-v1.0.bin``'s size is the VERIFIED exact total (T-04-INT).
+    """
+    targets: list[tuple[str, Path, int | None]] = []
+    for asset in kokoro_download_assets(variant):
+        dest = paths.model_dir() / asset["filename"]
+        targets.append((asset["url"], dest, asset.get("size_bytes")))
+    return targets
+
+
+def _download_kokoro_model(variant: str, state: dict) -> None:
+    """Daemon-thread target: download the Kokoro model + voices, progress -> ``state``.
+
+    The Kokoro analogue of ``_download_piper_voice`` (NOT a duplicate of the machinery
+    — it reuses the same generic ``download_file``, the same shared ``state`` dict, and
+    the same ``_download_action`` state model). CRITICAL (T-04-SRC): runs on a spawned
+    thread and MUST NOT call ``st.*``; it writes ONLY the shared ``state`` dict, which
+    the ``@st.fragment`` poller renders from the script thread. Downloads the variant
+    ``.onnx`` then ``voices-v1.0.bin`` in sequence; the progress denominator is the
+    grand-total of the two assets so the bar reflects the whole install. A truthy
+    ``state["cancel"]`` is forwarded to ``download_file`` (leaving the ``.part`` for
+    Resume — D-06/D-07) and then sets the TERMINAL ``cancelled`` marker so the action
+    column can switch to Resume once the thread has exited. Any exception lands in
+    ``state["error"]``.
+    """
+    targets = _kokoro_install_targets(variant)
+    grand_total = sum((size or 0) for _, _, size in targets) or state.get("total") or 1
+    state["total"] = grand_total
+    completed_bytes = 0
+    try:
+        for url, dest, size in targets:
+            base = completed_bytes
+
+            def _progress(d: int, _t: int) -> None:
+                state.update(downloaded=base + d, total=grand_total)
+
+            download_file(
+                url, dest, expected_size=size,
+                progress=_progress, cancel=lambda: state["cancel"],
+            )
+            if state["cancel"]:
+                state["cancelled"] = True  # D-07: .part kept for Resume (D-06)
+                return
+            completed_bytes += (size or 0)
+            state["downloaded"] = completed_bytes
+        state["done"] = True
+    except Exception as e:  # noqa: BLE001 — surface to the UI, NEVER st.* on this thread
+        state["error"] = str(e)
+
+
+def _start_kokoro_download(variant: str, footprint: int) -> None:
+    """Spawn the Kokoro download thread unless one is already in-flight (Pitfall 3).
+
+    Mirrors ``_start_piper_download`` exactly, guarding the respawn through the shared
+    pure ``_can_spawn_download`` so a rerun/double-click never puts a second writer on
+    the same ``.part`` (T-04-RETRIG). One in-flight Kokoro download is serialized under
+    ``_KOKORO_DL_KEY``.
+    """
+    if "dl_state" not in st.session_state:
+        st.session_state.dl_state = {}
+    existing = st.session_state.dl_state.get(_KOKORO_DL_KEY)
+    if not _can_spawn_download(existing):
+        return
+    state = _new_dl_state(footprint)
+    st.session_state.dl_state[_KOKORO_DL_KEY] = state
+    threading.Thread(
+        target=_download_kokoro_model, args=(variant, state), daemon=True
+    ).start()
+
+
 def _system_language_first(voices, system_lang):
     """Best-quality-first (D-09) with the system language's voices ahead (D-08)."""
     sys_lang = (system_lang or "").strip().lower()
@@ -464,6 +554,158 @@ def _import_voice_from_path(onnx_path_str: str) -> tuple[bool, str]:
     return True, f"Imported '{src.name[:-len('.onnx')]}'. It is now selectable on Upload."
 
 
+def _voice_partial_path(voice_id: str) -> Path:
+    """The orphaned-download ``.part`` path for a Piper voice's ``.onnx`` (D-18).
+
+    Pure path builder (Streamlit-free, unit-testable): ``model_dir()/{id}.onnx.part``
+    — the exact name ``downloader.download_file`` writes while streaming the model. The
+    per-item "Remove partial" action probes/unlinks this; scoped to ``model_dir()``
+    (basename-joined, never a user path — T-04-FILE).
+    """
+    return paths.model_dir() / f"{voice_id}.onnx.part"
+
+
+def _render_uninstall_control(voice_id: str, footprint: int) -> None:
+    """Uninstall an installed Piper voice: in-use block -> confirm + freed space (D-16/D-17).
+
+    Two-step, destructive-action UX (mirrors the warn/confirm idiom):
+
+      1. The first "Uninstall" click runs ``install_state.voice_in_use`` FIRST. If it
+         returns a reason (the voice is a non-terminal job's choice or the per-engine
+         default — D-17), REFUSE with "This voice is {reason} — switch to another voice
+         first" and delete nothing. Otherwise arm a per-voice confirm flag.
+      2. With the flag armed, show the freed space (``footprint``) and a
+         "Confirm uninstall" / "Cancel" pair. Confirm calls
+         ``install_state.uninstall_piper_voice`` (deletes the ``.onnx`` + ``.onnx.json``
+         within ``model_dir`` only — T-04-FILE), clears the shared voice cache so the
+         voice disappears from every picker with NO restart (the 04-03 pattern), and
+         reruns. Cancel disarms the flag.
+
+    The confirm flag lives in ``st.session_state`` keyed per voice so two rows never
+    interfere. Runs entirely on the script thread (Streamlit-safe).
+    """
+    _confirm_key = f"_uninstall_confirm_{voice_id}"
+    if not st.session_state.get(_confirm_key):
+        if st.button("Uninstall", key=f"uninstall_{voice_id}"):
+            reason = install_state.voice_in_use(
+                config.storage.database_path, "piper", voice_id
+            )
+            if reason:
+                # D-17: block — tell the user to switch first, delete nothing.
+                st.warning(
+                    f"This voice is {reason} — switch to another voice first, "
+                    "then uninstall it."
+                )
+            else:
+                st.session_state[_confirm_key] = True
+                st.rerun()
+    else:
+        # D-16: confirm step showing the freed space before deletion.
+        st.caption(f"Uninstall frees ~{footprint / 1e6:.1f} MB. This cannot be undone.")
+        _yes, _no = st.columns(2)
+        with _yes:
+            if st.button("Confirm uninstall", key=f"uninstall_yes_{voice_id}", type="primary"):
+                freed = install_state.uninstall_piper_voice(voice_id)
+                st.session_state.pop(_confirm_key, None)
+                clear_voice_cache()  # voice leaves every picker with no restart (04-03)
+                st.success(f"Uninstalled. Freed {freed / 1e6:.1f} MB.")
+                st.rerun()
+        with _no:
+            if st.button("Cancel", key=f"uninstall_no_{voice_id}"):
+                st.session_state.pop(_confirm_key, None)
+                st.rerun()
+
+
+def _render_kokoro_download_row() -> None:
+    """Engine-level Kokoro "model installed?" row with the in-UI download (D-19/D-04).
+
+    Kokoro is ONE model with many baked-in voices (D-19/discretion), so this is a
+    single engine-level row — NOT per-voice rows. When installed it shows a Ready
+    badge. When not, it offers a variant picker (default ``int8`` ~88 MB) and a
+    Download model action that runs the SAME generic flow as Piper: the universal
+    ``has_space`` disk pre-check (D-05), then the threaded ``download_file`` (the
+    Plan-03 ``dl_state``/``st.fragment`` machinery, reused verbatim under
+    ``_KOKORO_DL_KEY`` — no duplicated thread/poll code) for the chosen ``.onnx`` +
+    ``voices-v1.0.bin`` into ``model_dir()``. Because the f32 asset (~310 MB) crosses
+    the D-04 >200 MB threshold, a footprint confirm is shown before a large download
+    starts. On completion the model flips to Ready and Kokoro is usable with zero
+    further setup (the wget hint is gone). Cancel/Resume work exactly as for Piper.
+    """
+    installed = install_state.kokoro_model_installed()
+    with st.container(border=True):
+        info_col, action_col = st.columns([3, 1])
+        with info_col:
+            st.markdown("**Kokoro** — one model, many built-in voices")
+            if installed:
+                st.success("Ready · Kokoro model installed", icon="✅")
+            else:
+                st.caption("Model not installed — download it once to use Kokoro voices.")
+
+        dl_state = st.session_state.get("dl_state", {})
+        state = dl_state.get(_KOKORO_DL_KEY)
+        action = _download_action(state)
+        active = bool(state) and action != "install"
+
+        with action_col:
+            if installed and action in ("install", "done"):
+                st.button("Installed", key="kokoro_installed", disabled=True)
+            elif action == "downloading":
+                if st.button("Cancel", key="kokoro_cancel"):  # D-07
+                    state["cancel"] = True
+                    st.rerun()
+            elif action == "cancelling":
+                st.button("Cancelling…", key="kokoro_cancelling", disabled=True)
+            elif action == "resume":
+                if st.button("Resume", key="kokoro_resume"):  # D-06: offsets from .part
+                    _variant = st.session_state.get("_kokoro_variant", KOKORO_DEFAULT_VARIANT)
+                    _size = int(KOKORO_MODEL_VARIANTS[_variant]["size_bytes"]) + 28_214_398
+                    _start_kokoro_download(_variant, _size)
+                    st.rerun()
+
+        # Live byte-progress / result, polled from the script thread (D-08), reusing
+        # the SAME fragment as Piper (keyed by the synthetic Kokoro id).
+        if active:
+            _render_download_progress(_KOKORO_DL_KEY)
+
+        # Variant picker + Download action when not installed and not already running.
+        if not installed and not active:
+            _variant = st.selectbox(
+                "Model variant",
+                list(KOKORO_MODEL_VARIANTS.keys()),
+                index=list(KOKORO_MODEL_VARIANTS.keys()).index(KOKORO_DEFAULT_VARIANT),
+                format_func=lambda k: KOKORO_MODEL_VARIANTS[k]["label"],
+                key="_kokoro_variant",
+            )
+            # Grand total = chosen model + the shared voices bin (exact 28,214,398).
+            _footprint = int(KOKORO_MODEL_VARIANTS[_variant]["size_bytes"]) + 28_214_398
+            _big = _footprint > 200_000_000  # D-04 >200 MB confirm threshold
+            _confirm_key = "_kokoro_dl_confirm"
+
+            if _big and not st.session_state.get(_confirm_key):
+                # D-04: explicit footprint confirm BEFORE a large download starts.
+                st.warning(
+                    f"This download is large (~{_footprint / 1e6:.0f} MB). "
+                    "It will be saved to your per-user model cache."
+                )
+                if st.button("Download model", key="kokoro_download_confirm", type="primary"):
+                    st.session_state[_confirm_key] = True
+                    st.rerun()
+            else:
+                if st.button("Download model", key="kokoro_download", type="primary"):
+                    st.session_state.pop(_confirm_key, None)
+                    # D-05: universal disk-space pre-check gates the download.
+                    ok, free = has_space(paths.model_dir(), _footprint)
+                    if not ok:
+                        st.error(
+                            f"Not enough disk space: need ~{_footprint / 1e6:.0f} MB "
+                            f"(plus headroom), only {free / 1e6:.0f} MB free. "
+                            "Free up space and try again."
+                        )
+                    else:
+                        _start_kokoro_download(_variant, _footprint)
+                        st.rerun()
+
+
 def _render_voice_row(voice, entry: dict, speed: float) -> None:
     """One catalog row: badge + install/resume/cancel + preview (D-11/D-06/D-12).
 
@@ -504,6 +746,7 @@ def _render_voice_row(voice, entry: dict, speed: float) -> None:
         with action_col:
             if installed and action in ("install", "done"):
                 st.button("Installed", key=f"installed_{voice.id}", disabled=True)
+                _render_uninstall_control(voice.id, footprint)
             elif action == "downloading":
                 if st.button("Cancel", key=f"cancel_{voice.id}"):  # D-07
                     state["cancel"] = True
@@ -538,6 +781,15 @@ def _render_voice_row(voice, entry: dict, speed: float) -> None:
         # Live byte-progress / result, polled from the script thread (D-08).
         if active:
             _render_download_progress(voice.id)
+
+        # PARTIAL CLEANUP (D-18) — per item. An interrupted download leaves a
+        # ``{voice}.onnx.part``; offer a one-click "Remove partial" to clear just this
+        # one (the bulk action lives below the catalog). Only show it when a partial is
+        # actually present AND no download is in flight for this voice.
+        if not active and _voice_partial_path(voice.id).exists():
+            if st.button("Remove partial", key=f"rmpart_{voice.id}"):
+                _voice_partial_path(voice.id).unlink(missing_ok=True)
+                st.rerun()
 
         # PREVIEW (D-12/VOICE-03): live synth when installed; a bundled or on-demand
         # fetched+cached sample clip when not. Plays via st.audio on the script thread.
@@ -1021,6 +1273,41 @@ with tab_voices:
         st.caption(f"{len(_visible)} voice{'s' if len(_visible) != 1 else ''} shown.")
         for _eng, _base_v, _merged_v in _visible:
             _render_cross_engine_row(_eng, _base_v, _merged_v)
+
+    # -----------------------------------------------------------------------
+    # Engine models (D-19): the engine-level Kokoro model download. native_os is
+    # OS-owned (nothing to download/uninstall) and Piper is per-voice below, so this
+    # block is just the single Kokoro model row — the same generic download substrate
+    # as Piper, proving the layer is engine-generic before Phase 5 reuses it.
+    # -----------------------------------------------------------------------
+    st.divider()
+    st.markdown("#### Engine models")
+    st.caption(
+        "Kokoro is one model with many built-in voices — download it once here to "
+        "use them. native_os voices are provided by your operating system (nothing "
+        "to download or uninstall)."
+    )
+    _render_kokoro_download_row()
+
+    # -----------------------------------------------------------------------
+    # Bulk partial-download cleanup (D-18): clear ALL orphaned ``.part`` files left by
+    # interrupted downloads in the per-user model cache in one click. Per-item "Remove
+    # partial" lives on each Piper catalog row below; this clears every orphan at once.
+    # -----------------------------------------------------------------------
+    st.divider()
+    st.markdown("#### Clean up partial downloads")
+    st.caption(
+        "Interrupted downloads leave temporary `.part` files in your model cache. "
+        "Remove them all at once if you no longer want to resume them."
+    )
+    if st.button("Clean up partial downloads"):
+        _removed = clean_partials(paths.model_dir())
+        if _removed:
+            st.success(
+                f"Removed {_removed} partial download file{'s' if _removed != 1 else ''}."
+            )
+        else:
+            st.info("No partial downloads to clean up.")
 
     st.divider()
     st.markdown("#### Install Piper voices")
