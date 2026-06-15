@@ -23,6 +23,7 @@ from diana.tts.kokoro_engine import (
     kokoro_download_assets,
 )
 from diana.tts.orpheus_engine import orpheus_install_spec
+from diana.tts.f5_engine import f5_install_spec
 from diana.tts.native_os_engine import (
     filter_voices,
     order_by_quality,
@@ -807,14 +808,43 @@ def _render_heavy_uninstall_control(engine: str, footprint: int) -> None:
                 st.rerun()
 
 
-def _render_heavy_engine_row(engine: str, spec) -> None:
+def _render_heavy_license_gate(engine: str, license: dict) -> bool:
+    """Render the accept-once NC-license gate; return True iff already accepted (D-08).
+
+    The first license gate (F5/Fish are non-commercial — CC-BY-NC). It consults the
+    durable ``app_settings`` flag via ``heavy_install.license_accepted`` and, when NOT yet
+    accepted, renders — BEFORE any install control or download — the disclosure naming
+    "non-commercial / personal use only" with a link to the actual license, plus an
+    "I accept" button that calls ``heavy_install.accept_license`` and reruns. Acceptance
+    persists so a re-install never re-prompts (survives restart via a fresh DB connection).
+    This mirrors the ``1_Upload.py`` dismissible-hint accept-once idiom. Returns True when
+    the license is already accepted (so the caller proceeds to the install flow), False
+    while the gate is still showing (caller renders nothing further). Cheap: a single
+    durable-pref read — NO heavy SDK import.
+    """
+    if heavy_install.license_accepted(config.storage.database_path, engine):
+        return True
+    st.warning(license["text"])
+    st.markdown(f"[Read the license]({license['url']})")
+    if st.button("I accept", key=f"{engine}_accept_license", type="primary"):
+        heavy_install.accept_license(config.storage.database_path, engine)
+        st.rerun()
+    return False
+
+
+def _render_heavy_engine_row(engine: str, spec, license: dict | None = None) -> None:
     """A heavy opt-in engine install row: footprint confirm + disk pre-check + 2-phase.
 
-    The generic heavy-engine row F5/Fish reuse (this slice wires Orpheus). Built on the
-    Kokoro-row machinery (``_download_action`` state model, ``_can_spawn_download`` guard,
-    the ``@st.fragment`` progress poller) but swapping the download substrate for the
-    05-03 provisioner:
+    The generic heavy-engine row F5/Fish reuse (05-04 wired Orpheus; this slice adds the
+    license gate F5/Fish need). Built on the Kokoro-row machinery (``_download_action``
+    state model, ``_can_spawn_download`` guard, the ``@st.fragment`` progress poller) but
+    swapping the download substrate for the 05-03 provisioner:
 
+      * D-08 accept-once NC-license gate (when ``license`` is given): the disclosure +
+        "I accept" is shown BEFORE any install control or download, persisted so a
+        re-install never re-prompts. Until accepted, NO footprint/disk/Install appears
+        (acceptance precedes any byte). Orpheus passes no ``license`` (its weights are
+        permissive), so its row is unchanged.
       * D-04 ITEMIZED footprint confirm BEFORE any byte — heavy installs always exceed
         the >200 MB threshold, so the confirm always shows, itemizing deps vs model from
         ``spec.deps_bytes`` / ``spec.weights_bytes``.
@@ -874,8 +904,12 @@ def _render_heavy_engine_row(engine: str, spec) -> None:
             _render_download_progress(key)
 
         # Itemized footprint confirm + disk pre-check + Install, when not installed and
-        # not already running.
+        # not already running — BEHIND the accept-once NC-license gate (D-08) when this
+        # engine requires one (F5/Fish). Until the license is accepted, NO footprint /
+        # disk-check / Install control is shown — acceptance precedes any byte.
         if not installed and not active:
+            if license is not None and not _render_heavy_license_gate(engine, license):
+                return  # license not yet accepted — gate is showing, nothing further
             st.caption(
                 f"{label} needs ~{deps_mb:.0f} MB dependencies + ~{model_mb:.0f} MB "
                 f"model (~{total_mb:.0f} MB total). Saved to your per-user cache."
@@ -1063,6 +1097,14 @@ def _cross_engine_badge(engine: str, voice) -> None:
             st.success("Ready · Orpheus installed", icon="✅")
         else:
             st.caption("~2.3 GB+, downloads on install — set up in Engine models above")
+        return
+    if engine == "f5":
+        # Heavy opt-in engine (HEAVY-02): cheap filesystem probe of the shared torch venv
+        # + marker — NO torch/f5_tts import on the badge path (ENGINE-01/D-17).
+        if install_state.heavy_engine_installed("f5"):
+            st.success("Ready · F5-TTS installed", icon="✅")
+        else:
+            st.caption("~1.5 GB+, downloads on install — set up in Engine models above")
         return
     st.caption("")  # unknown engine — no badge
 
@@ -1655,6 +1697,21 @@ with tab_voices:
         "terminal needed). You can uninstall to reclaim the space at any time."
     )
     _render_heavy_engine_row("orpheus", orpheus_install_spec())
+    # F5-TTS (HEAVY-02): weights are CC-BY-NC, so the row gates Install behind the
+    # accept-once non-commercial license disclosure (D-08) — shown BEFORE any download
+    # and persisted so a re-install never re-prompts. The spec comes from f5_engine, so no
+    # repo IDs / pins are hardcoded here; nothing heavy is imported until Install runs.
+    _render_heavy_engine_row(
+        "f5",
+        f5_install_spec(),
+        license={
+            "text": (
+                "F5-TTS weights are released under CC-BY-NC "
+                "(non-commercial / personal use only)."
+            ),
+            "url": "https://github.com/SWivid/F5-TTS",
+        },
+    )
 
     # -----------------------------------------------------------------------
     # Bulk partial-download cleanup (D-18): clear ALL orphaned ``.part`` files left by
