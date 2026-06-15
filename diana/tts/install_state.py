@@ -25,6 +25,26 @@ def piper_voice_installed(voice_id: str) -> bool:
     return (paths.model_dir() / f"{voice_id}.onnx").exists()
 
 
+def list_installed_piper_voice_ids() -> list[str]:
+    """Bare ids of every installed Piper voice — a cheap ``*.onnx`` glob (ENGINE-01).
+
+    Globs ``{id}.onnx`` in ``model_dir`` (the same lane as ``piper_voice_installed``)
+    and returns the filename stems, EXCLUDING the Kokoro model variants
+    (``_KOKORO_ONNX_VARIANTS``) — Kokoro is one model with baked-in voices (D-19),
+    never a Piper voice file. Result is sorted for stable enumeration. Pure
+    filesystem probe: NO onnxruntime/piper import (ENGINE-01). Returns ``[]`` when
+    the model dir does not exist yet (fresh install).
+    """
+    md = paths.model_dir()
+    if not md.exists():
+        return []
+    ids = [
+        f.stem for f in md.glob("*.onnx")
+        if f.name not in _KOKORO_ONNX_VARIANTS
+    ]
+    return sorted(ids)
+
+
 def piper_footprint_bytes(voice_id: str) -> int:
     """On-disk ``.onnx`` size if the voice is installed, else 0 (ENGINE-03/D-11).
 

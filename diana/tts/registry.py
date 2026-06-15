@@ -56,10 +56,17 @@ def create_engine(config: DianaConfig, engine_name: str | None = None):
 def get_engine_voices(engine_name: str, config: DianaConfig | None = None) -> list[TTSVoice]:
     """Return available voices for an engine.
 
-    Most engines expose a static VOICES class attribute. native_os is the
-    exception (D-04): its voices are enumerated dynamically from the OS at
-    runtime, so it constructs a short-lived engine, initializes it, and returns
-    its live list_voices(). UI callers cache this across Streamlit reruns.
+    Most engines expose a static VOICES class attribute. Two engines enumerate
+    dynamically:
+
+    - native_os (D-04): voices come from the OS at runtime, so it constructs a
+      short-lived engine, initializes it, and returns its live list_voices().
+    - piper: the static curated VOICES MERGED with every voice the user has
+      installed on disk (so an "install -> use" voice appears in the Upload and
+      Settings pickers — VOICE-05). Discovery is a cheap ``*.onnx`` filesystem
+      glob (ENGINE-01: NO onnxruntime/piper import on the enumeration path).
+
+    UI callers cache this across Streamlit reruns.
     """
     if engine_name == "native_os":
         from diana.tts.native_os_engine import NativeOSEngine
@@ -69,8 +76,38 @@ def get_engine_voices(engine_name: str, config: DianaConfig | None = None) -> li
             return eng.list_voices()
         finally:
             eng.shutdown()
+    if engine_name == "piper":
+        return _piper_voices()
     cls = _get_engine_class(engine_name)
     return list(cls.VOICES)
+
+
+def _piper_voices() -> list[TTSVoice]:
+    """Static curated Piper voices merged with installed-on-disk voices (VOICE-05).
+
+    The static ``PiperEngine.VOICES`` come first (their hand-curated labels are the
+    richer ones); each installed voice id NOT already in that static set is appended,
+    labeled via the catalog (bundled-manifest entry when known, else derived from the
+    Piper id convention). Deduped by id — a voice present both statically and on disk
+    keeps its static label. Installed Kokoro ``.onnx`` variants are excluded by the
+    install-state lister, so they never appear here as Piper voices.
+
+    Cheap by design: a ``*.onnx`` glob plus a cached catalog lookup — no engine SDK
+    import (ENGINE-01). ``install_state`` / ``catalog`` are imported lazily so the
+    cleaning path (``engine_is_ascii_only``) never pulls them in.
+    """
+    from diana.tts.catalog import voice_label_for_id
+    from diana.tts.install_state import list_installed_piper_voice_ids
+    from diana.tts.piper_engine import PiperEngine
+
+    voices = list(PiperEngine.VOICES)
+    seen = {v.id for v in voices}
+    for vid in list_installed_piper_voice_ids():
+        if vid in seen:
+            continue
+        seen.add(vid)
+        voices.append(voice_label_for_id(vid))
+    return voices
 
 
 def resolve_default_voice(

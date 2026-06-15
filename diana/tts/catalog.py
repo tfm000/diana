@@ -20,6 +20,7 @@ helpers (D-03) — this module does NOT define its own filter functions.
 
 import json
 import logging
+from functools import lru_cache
 from importlib import resources
 
 import requests
@@ -27,6 +28,11 @@ import requests
 from diana.tts.base import TTSVoice
 
 logger = logging.getLogger(__name__)
+
+# Piper quality tokens (the trailing segment of a `{lang}-{name}-{quality}` id) ->
+# the TTSVoice quality tier. Used only when an installed voice id is NOT in the
+# bundled manifest, so a hand-imported voice still gets a sensible tier label.
+_PIPER_QUALITY_TIERS = {"x_low", "low", "medium", "high"}
 
 # The live manifest (D-02 "Refresh catalog" only) and the per-file raw-download
 # prefix. The manifest `files` key is already the full repo-relative path, so the
@@ -148,3 +154,70 @@ def group_by_language(voices: list[TTSVoice]) -> dict[str, list[TTSVoice]]:
         lang = (v.language or "").strip().lower()
         grouped.setdefault(lang, []).append(v)
     return grouped
+
+
+@lru_cache(maxsize=1)
+def _bundled_voices_by_id() -> dict[str, TTSVoice]:
+    """``{voice_id: TTSVoice}`` from the bundled snapshot, parsed once and cached.
+
+    Keeps enumeration cheap: labeling an installed voice from the catalog must not
+    re-read+re-parse the package-data JSON on every keystroke. A read/parse failure
+    degrades to an empty map (the id-convention derivation then takes over) rather
+    than crashing voice enumeration.
+    """
+    try:
+        return {v.id: v for v in load_bundled_manifest()}
+    except Exception as e:  # noqa: BLE001 — degrade to derive-from-id, never crash enumeration
+        logger.warning("Bundled catalog unreadable (%s); labeling installed voices by id", e)
+        return {}
+
+
+def _derive_piper_voice(voice_id: str) -> TTSVoice:
+    """Derive a readable TTSVoice from the Piper ``{lang}-{name}-{quality}`` id.
+
+    Pure fallback for an installed voice that is NOT in the bundled manifest (e.g.
+    a hand-imported one). Splits ``en_US-lessac-medium`` into language ``en-us``
+    (the same ``en_US -> en-us`` fold the manifest parser uses), a readable name,
+    and a quality tier from the trailing ``x_low|low|medium|high`` token. A
+    non-conforming id still yields a usable voice (id as name, ``standard`` tier),
+    so enumeration never crashes on an unexpected filename.
+    """
+    parts = voice_id.split("-")
+    language = "unknown"
+    tier = "standard"
+    name = voice_id
+
+    if len(parts) >= 3:
+        # Trailing token is the quality tier when it is a known Piper quality.
+        if parts[-1] in _PIPER_QUALITY_TIERS:
+            tier = parts[-1]
+            name_token = parts[-2]
+        else:
+            name_token = parts[-1]
+        language = parts[0].replace("_", "-").lower()  # en_US -> en-us
+        readable = name_token.replace("_", " ").strip().title()
+        region = parts[0].split("_")[-1].upper() if "_" in parts[0] else ""
+        name = f"{readable} ({region} {tier.title()})" if region else f"{readable} ({tier.title()})"
+
+    return TTSVoice(
+        id=voice_id,
+        name=name,
+        language=language,
+        gender="unknown",   # the Piper id convention does not encode gender
+        tier=tier,
+        bilingual=False,
+    )
+
+
+def voice_label_for_id(voice_id: str) -> TTSVoice:
+    """Best available TTSVoice label for an installed Piper voice id (pure/cheap).
+
+    Prefers the richer bundled-manifest entry when the id is catalogued; otherwise
+    derives a sensible label from the Piper ``{lang}-{name}-{quality}`` convention
+    (``_derive_piper_voice``). Reuses the catalog parse via a cached by-id map — it
+    does NOT re-parse inline, and touches no engine SDK (ENGINE-01).
+    """
+    catalogued = _bundled_voices_by_id().get(voice_id)
+    if catalogued is not None:
+        return catalogued
+    return _derive_piper_voice(voice_id)
