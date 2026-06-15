@@ -16,12 +16,13 @@ from diana.dashboard.voice_cache import cached_voices as _cached_voices
 from diana.dashboard.voice_cache import clear_voice_cache
 from diana.database import get_setting, set_setting
 from diana.downloads.downloader import clean_partials, download_file, has_space
-from diana.tts import catalog, install_state
+from diana.tts import catalog, heavy_install, install_state
 from diana.tts.kokoro_engine import (
     KOKORO_DEFAULT_VARIANT,
     KOKORO_MODEL_VARIANTS,
     kokoro_download_assets,
 )
+from diana.tts.orpheus_engine import orpheus_install_spec
 from diana.tts.native_os_engine import (
     filter_voices,
     order_by_quality,
@@ -235,12 +236,25 @@ def _render_download_progress(voice_id: str) -> None:
         # Cancel requested; the worker is finishing its current write before it sets
         # the terminal ``cancelled`` marker. Show a transient note (no button here).
         st.caption("Cancelling…")
+    elif state.get("phase") == "deps":
+        # Phase A of a heavy-engine install (05-04): `uv venv` + `uv pip install` has no
+        # clean byte totals, so the provisioner streams uv stdout LINES into
+        # ``state["step"]`` instead of bytes. Render that step label rather than a byte
+        # bar. Phase B (weights) and the Kokoro/Piper rows never set ``phase``, so they
+        # keep the byte progress bar below (unchanged).
+        st.caption(f"Installing dependencies… {state.get('step', '')}")
     else:
         total = state["total"] or 1
-        st.progress(
-            min(state["downloaded"] / total, 1.0),
-            text=f"{state['downloaded'] / 1e6:.1f} / {total / 1e6:.1f} MB",
-        )
+        if state.get("phase") == "weights" and not state.get("downloaded"):
+            # Phase B just started (weights prefetch runs in a venv subprocess that does
+            # not stream byte counts back here), so there is no denominator yet — show the
+            # step label until the worker reports progress, never a 0/0 bar.
+            st.caption(f"{state.get('step', 'Downloading model weights…')}")
+        else:
+            st.progress(
+                min(state["downloaded"] / total, 1.0),
+                text=f"{state['downloaded'] / 1e6:.1f} / {total / 1e6:.1f} MB",
+            )
 
     # Trigger ONE full rerun when the worker has just reached a terminal state so the
     # main-body action column flips (errored/cancelled -> "Resume"; done -> the picker
@@ -706,6 +720,188 @@ def _render_kokoro_download_row() -> None:
                         st.rerun()
 
 
+def _start_heavy_install(engine: str, spec, footprint: int) -> None:
+    """Spawn the heavy-engine install thread unless one is already in-flight (Pitfall 3).
+
+    The heavy-engine analogue of ``_start_kokoro_download``: it guards the respawn
+    through the shared pure ``_can_spawn_download`` (so a rerun/double-click never puts a
+    second installer on the same venv — T-04-RETRIG) and runs
+    ``heavy_install.install_engine`` (the 05-03 two-phase deps->weights thread target) on
+    a daemon thread that writes ONLY the shared ``state`` dict (T-05-SRC). One in-flight
+    install per engine is serialized under ``f"__{engine}_install__"``.
+    """
+    key = f"__{engine}_install__"
+    if "dl_state" not in st.session_state:
+        st.session_state.dl_state = {}
+    existing = st.session_state.dl_state.get(key)
+    if not _can_spawn_download(existing):
+        return
+    state = _new_dl_state(footprint)
+    st.session_state.dl_state[key] = state
+    threading.Thread(
+        target=heavy_install.install_engine, args=(spec, state), daemon=True
+    ).start()
+
+
+def _engine_in_use_reason(engine: str) -> str | None:
+    """Human reason a heavy engine may NOT be uninstalled, else ``None`` (D-16/D-17).
+
+    The engine-level analogue of ``install_state.voice_in_use``: refuse to remove an
+    engine that a NON-TERMINAL (pending/in-flight) job still needs, and say so, so the
+    worker never reaches a job whose engine was deleted mid-flight. A terminal job's
+    engine (a finished/failed conversion) does NOT block — its audio already exists.
+    Cheap DB read only (NO engine SDK import — ENGINE-01); ``database``/``models`` are
+    imported lazily.
+    """
+    from diana.database import list_jobs
+    from diana.models import JobStatus
+
+    terminal = {JobStatus.COMPLETED, JobStatus.FAILED}
+    for job in list_jobs(config.storage.database_path):
+        if job.tts_engine == engine and job.status not in terminal:
+            return "in use by a pending or in-progress job"
+    return None
+
+
+def _render_heavy_uninstall_control(engine: str, footprint: int) -> None:
+    """Two-step uninstall for an installed heavy engine: in-use block -> confirm + freed.
+
+    Mirrors ``_render_uninstall_control`` (the Piper-voice destructive-action UX) but at
+    the ENGINE level: the first click runs ``_engine_in_use_reason`` and REFUSES (delete
+    nothing) when a non-terminal job still needs the engine; otherwise it arms a confirm
+    flag, then a "Confirm uninstall"/"Cancel" pair calls
+    ``install_state.uninstall_heavy_engine`` (removes the marker + the per-engine venv
+    tree, scoped to ``venvs_dir()`` — T-05-EXE; shared-torch engines keep the tree until
+    the last one goes). The freed bytes are shown; the cross-engine cache is cleared so
+    the engine's Ready state flips everywhere with no restart. Script-thread only.
+    """
+    _confirm_key = f"_heavy_uninstall_confirm_{engine}"
+    if not st.session_state.get(_confirm_key):
+        if st.button("Uninstall", key=f"heavy_uninstall_{engine}"):
+            reason = _engine_in_use_reason(engine)
+            if reason:
+                st.warning(
+                    f"{engine.capitalize()} is {reason} — switch that job to another "
+                    "engine first, then uninstall."
+                )
+            else:
+                st.session_state[_confirm_key] = True
+                st.rerun()
+    else:
+        st.caption(
+            f"Uninstall frees ~{footprint / 1e6:.0f} MB. This cannot be undone."
+        )
+        _yes, _no = st.columns(2)
+        with _yes:
+            if st.button("Confirm uninstall", key=f"heavy_uninstall_yes_{engine}",
+                         type="primary"):
+                freed = install_state.uninstall_heavy_engine(engine)
+                st.session_state.pop(_confirm_key, None)
+                clear_voice_cache()
+                st.success(f"Uninstalled {engine.capitalize()}. "
+                           f"Freed {freed / 1e6:.0f} MB.")
+                st.rerun()
+        with _no:
+            if st.button("Cancel", key=f"heavy_uninstall_no_{engine}"):
+                st.session_state.pop(_confirm_key, None)
+                st.rerun()
+
+
+def _render_heavy_engine_row(engine: str, spec) -> None:
+    """A heavy opt-in engine install row: footprint confirm + disk pre-check + 2-phase.
+
+    The generic heavy-engine row F5/Fish reuse (this slice wires Orpheus). Built on the
+    Kokoro-row machinery (``_download_action`` state model, ``_can_spawn_download`` guard,
+    the ``@st.fragment`` progress poller) but swapping the download substrate for the
+    05-03 provisioner:
+
+      * D-04 ITEMIZED footprint confirm BEFORE any byte — heavy installs always exceed
+        the >200 MB threshold, so the confirm always shows, itemizing deps vs model from
+        ``spec.deps_bytes`` / ``spec.weights_bytes``.
+      * D-05 disk pre-check on Install: ``has_space(venvs_dir(), deps + weights)`` refuses
+        with a clear "need X / only Y free" message before spawning.
+      * the two-phase install runs on a daemon thread (``_start_heavy_install`` ->
+        ``heavy_install.install_engine``); ``_render_download_progress`` shows the Phase-A
+        step label then the Phase-B weights step (the ``phase``/``step`` extension above).
+      * when installed, a Ready badge + the two-step engine uninstall control.
+
+    Cheap by design: a filesystem install probe + a static spec — NO heavy SDK import.
+    """
+    installed = install_state.heavy_engine_installed(engine)
+    key = f"__{engine}_install__"
+    label = engine.capitalize()
+    deps_mb = spec.deps_bytes / 1e6
+    model_mb = spec.weights_bytes / 1e6
+    total_bytes = spec.deps_bytes + spec.weights_bytes
+    total_mb = total_bytes / 1e6
+
+    with st.container(border=True):
+        info_col, action_col = st.columns([3, 1])
+        with info_col:
+            st.markdown(f"**{label}** — neural voices, runs on-device (opt-in)")
+            if installed:
+                st.success(f"Ready · {label} installed", icon="✅")
+            else:
+                st.caption(
+                    "Not installed — a one-time download sets up an isolated "
+                    "environment plus the voice model."
+                )
+
+        dl_state = st.session_state.get("dl_state", {})
+        state = dl_state.get(key)
+        action = _download_action(state)
+        active = bool(state) and action != "install"
+
+        with action_col:
+            if installed and action in ("install", "done"):
+                _render_heavy_uninstall_control(
+                    engine, install_state.heavy_footprint_bytes(engine)
+                )
+            elif action == "downloading":
+                if st.button("Cancel", key=f"{engine}_cancel"):  # D-07
+                    state["cancel"] = True
+                    st.rerun()
+            elif action == "cancelling":
+                st.button("Cancelling…", key=f"{engine}_cancelling", disabled=True)
+            elif action == "resume":
+                if st.button("Resume", key=f"{engine}_resume"):
+                    _start_heavy_install(engine, spec, total_bytes)
+                    st.rerun()
+
+        # Live two-phase progress (deps step label -> weights), polled from the script
+        # thread, reusing the SAME fragment as Kokoro/Piper (keyed by the install key).
+        if active:
+            _render_download_progress(key)
+
+        # Itemized footprint confirm + disk pre-check + Install, when not installed and
+        # not already running.
+        if not installed and not active:
+            st.caption(
+                f"{label} needs ~{deps_mb:.0f} MB dependencies + ~{model_mb:.0f} MB "
+                f"model (~{total_mb:.0f} MB total). Saved to your per-user cache."
+            )
+            _confirm_key = f"_{engine}_install_confirm"
+            # D-04: heavy installs ALWAYS exceed >200 MB, so always require a confirm.
+            if not st.session_state.get(_confirm_key):
+                if st.button("Install", key=f"{engine}_install_confirm", type="primary"):
+                    st.session_state[_confirm_key] = True
+                    st.rerun()
+            else:
+                if st.button("Install", key=f"{engine}_install", type="primary"):
+                    st.session_state.pop(_confirm_key, None)
+                    # D-05: disk pre-check against venvs_dir() before any byte.
+                    ok, free = has_space(paths.venvs_dir(), total_bytes)
+                    if not ok:
+                        st.error(
+                            f"Not enough disk space: need ~{total_mb:.0f} MB "
+                            f"(plus headroom), only {free / 1e6:.0f} MB free. "
+                            "Free up space and try again."
+                        )
+                    else:
+                        _start_heavy_install(engine, spec, total_bytes)
+                        st.rerun()
+
+
 def _render_voice_row(voice, entry: dict, speed: float) -> None:
     """One catalog row: badge + install/resume/cancel + preview (D-11/D-06/D-12).
 
@@ -859,6 +1055,14 @@ def _cross_engine_badge(engine: str, voice) -> None:
             st.success("Ready · Kokoro model installed", icon="✅")
         else:
             st.caption("Kokoro model not installed — downloads on first use")
+        return
+    if engine == "orpheus":
+        # Heavy opt-in engine (HEAVY-01): cheap filesystem probe of the per-engine venv
+        # + marker — NO orpheus_cpp/llama_cpp import on the badge path (ENGINE-01/D-17).
+        if install_state.heavy_engine_installed("orpheus"):
+            st.success("Ready · Orpheus installed", icon="✅")
+        else:
+            st.caption("~2.3 GB+, downloads on install — set up in Engine models above")
         return
     st.caption("")  # unknown engine — no badge
 
@@ -1434,6 +1638,23 @@ with tab_voices:
         "to download or uninstall)."
     )
     _render_kokoro_download_row()
+
+    # -----------------------------------------------------------------------
+    # Heavy opt-in engines (Phase 5, HEAVY-01): higher-quality neural engines that
+    # are NOT bundled — the user installs them on demand here (deps + model weights in
+    # one action, no terminal). Each row reuses the generic heavy-engine install row
+    # (footprint confirm + disk pre-check + two-phase progress + uninstall). Orpheus is
+    # the first; F5/Fish join in their own waves. The default install stays untouched
+    # (D-02): nothing here is downloaded or imported until the user clicks Install.
+    # -----------------------------------------------------------------------
+    st.divider()
+    st.markdown("#### Heavy opt-in engines")
+    st.caption(
+        "Higher-quality neural voices that run entirely on your machine. They are not "
+        "included by default — install one on demand below (a one-time download, no "
+        "terminal needed). You can uninstall to reclaim the space at any time."
+    )
+    _render_heavy_engine_row("orpheus", orpheus_install_spec())
 
     # -----------------------------------------------------------------------
     # Bulk partial-download cleanup (D-18): clear ALL orphaned ``.part`` files left by
