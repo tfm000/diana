@@ -63,7 +63,7 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 - [ ] **HEAVY-01**: Orpheus engine available (llama-cpp-python + GGUF, CPU-viable) with named voices
 - [ ] **HEAVY-02**: F5-TTS engine available (on-demand torch) with reference-audio voice cloning + clip validation, behind an in-app non-commercial license disclosure shown before download
-- [ ] **HEAVY-03**: Fish Audio S2 Pro engine available, GPU-gated (hidden unless a capable GPU is detected), opt-in, with non-commercial license disclosure
+- [ ] **HEAVY-03**: Fish Audio S2 Pro engine available, GPU-gated (shown but disabled with a 'requires a capable GPU (~12+ GB VRAM)' reason when none is detected), opt-in, with non-commercial license disclosure
 
 ### Packaging & Distribution
 
