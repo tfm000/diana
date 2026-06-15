@@ -137,27 +137,69 @@ def _resolve_uv() -> str:
     )
 
 
-def _run(cmd: list[str], on_line=None) -> None:
+def _run(cmd: list[str], on_line=None, cancel=None, timeout: int = 3600) -> None:
     """Run a list-argv command, streaming each stdout line to ``on_line``.
 
     ``shell=False`` (list argv) — package/path values are code-pinned, never a shell
     string (T-05-CMD). Phase-A ``uv`` output has no clean byte totals, so each stdout
     line is forwarded as a step label (Pattern 3); a non-zero exit raises RuntimeError.
+
+    ``cancel``: optional callable; when truthy, the child process is terminated
+    immediately and ``RuntimeError("install cancelled by user")`` is raised so the
+    caller can set ``state["cancelled"]`` (WR-01 cancel-during-Phase-A fix).
+
+    ``timeout``: wall-clock deadline in seconds (default 3600 — generous for multi-GB
+    installs, matching Phase B's limit). Exceeded deadline terminates the child and
+    raises ``RuntimeError`` so a stalled ``uv`` command cannot block the thread forever
+    (WR-02 timeout fix).
+
+    The last 20 lines of combined stdout/stderr are captured and included in the
+    ``RuntimeError`` message on non-zero exit so install failures are diagnosable
+    without log spelunking (WR-03 error-text fix).
     """
+    import time
+    from collections import deque
+
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
-    if proc.stdout is not None:
-        for line in proc.stdout:
-            line = line.rstrip()
-            if on_line and line:
-                on_line(line)
+    deadline = time.monotonic() + timeout
+    tail: deque[str] = deque(maxlen=20)
+    try:
+        if proc.stdout is not None:
+            for line in proc.stdout:
+                # WR-01: poll cancel flag between lines; terminate child on cancel.
+                if cancel and cancel():
+                    proc.terminate()
+                    proc.wait()
+                    raise RuntimeError("install cancelled by user")
+                # WR-02: enforce wall-clock deadline between lines.
+                if time.monotonic() > deadline:
+                    proc.terminate()
+                    proc.wait()
+                    raise RuntimeError(
+                        f"install step timed out after {timeout}s: {' '.join(cmd[:2])}"
+                    )
+                line = line.rstrip()
+                tail.append(line)  # WR-03: retain for error context
+                if on_line and line:
+                    on_line(line)
+    except RuntimeError:
+        raise
+    except Exception:
+        proc.terminate()
+        proc.wait()
+        raise
+    # WR-03: include captured output in the failure message so the error is diagnosable.
     if proc.wait() != 0:
-        raise RuntimeError(f"install step failed: {' '.join(cmd[:2])} ... (see log)")
+        detail = "\n".join(tail) or "(no output)"
+        raise RuntimeError(
+            f"install step failed: {' '.join(cmd[:2])}\n{detail}"
+        )
 
 
 def provision_venv(venv_path, packages, extra_index=None, py="3.12",
-                   on_line=None) -> Path:
+                   on_line=None, cancel=None, timeout: int = 3600) -> Path:
     """Create an isolated venv via bundled ``uv`` and pip-install ``packages``.
 
     RESEARCH Pattern 1 — the D-05/D-06 mechanism. ``uv venv --python <py> <venv>``
@@ -166,17 +208,19 @@ def provision_venv(venv_path, packages, extra_index=None, py="3.12",
     installs into THAT venv (ABI pinned to the venv's python, not the frozen app).
     Returns the venv's python path. ``on_line`` receives each ``uv`` stdout line so
     the UI ``dl_state['step']`` can render the current step (Phase-A progress).
+    ``cancel`` and ``timeout`` are forwarded to ``_run`` (WR-01/WR-02).
     """
     venv_path = Path(venv_path)
     uv = _resolve_uv()
     # 1) create the venv (with a managed standalone CPython at the pinned version).
-    _run([uv, "venv", "--python", py, str(venv_path)], on_line)
+    _run([uv, "venv", "--python", py, str(venv_path)], on_line, cancel=cancel,
+         timeout=timeout)
     vpy = _venv_python(venv_path)
     # 2) install into THAT venv's python (ABI-pinned), optionally via a wheel index.
     cmd = [uv, "pip", "install", "--python", str(vpy), *packages]
     if extra_index:
         cmd += ["--extra-index-url", extra_index]
-    _run(cmd, on_line)
+    _run(cmd, on_line, cancel=cancel, timeout=timeout)
     return vpy
 
 
@@ -242,10 +286,14 @@ def install_engine(spec_or_engine, state=None, *, on_line=None, cancel=None) -> 
             return
 
         # A. Phase deps — provision the isolated venv + pip-install heavy packages.
+        # Pass _cancelled so _run() can terminate the uv subprocess mid-stream when
+        # the user clicks Cancel (WR-01: cancel now interrupts Phase A, not just the
+        # between-phase poll below).
         state["phase"] = "deps"
         state["step"] = "Creating environment…"
         vpy = provision_venv(
             venvs / spec.venv_name, spec.packages, spec.extra_index, on_line=_step,
+            cancel=_cancelled,
         )
 
         if _cancelled():
@@ -275,7 +323,14 @@ def install_engine(spec_or_engine, state=None, *, on_line=None, cancel=None) -> 
         venvs.mkdir(parents=True, exist_ok=True)
         (venvs / f".{spec.engine}.installed").write_text("1", encoding="utf-8")
         state["done"] = True
-    except Exception as e:  # noqa: BLE001 — surface to the UI, NEVER st.* on this thread
+    except RuntimeError as e:  # noqa: BLE001 — surface to the UI, NEVER st.* on this thread
+        # Distinguish a user-initiated cancel (WR-01) from a real install failure so
+        # the UI shows the correct terminal state.
+        if str(e) == "install cancelled by user":
+            state["cancelled"] = True
+        else:
+            state["error"] = str(e)
+    except Exception as e:  # noqa: BLE001
         state["error"] = str(e)
 
 
