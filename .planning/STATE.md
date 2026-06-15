@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 4 context gathered (Engine Management & Voice Catalog — engine-agnostic management UX + generic download/cache layer proven via Piper+Kokoro; uninstall added)
-last_updated: "2026-06-15T12:32:17.268Z"
-last_activity: 2026-06-15 -- Phase 04 planning complete
+stopped_at: Completed 04-01-PLAN.md (Wave-0 validation foundation — 7 skipif scaffolds + voices_manifest.json fixture + network marker + TTSVoice.tags; suite 380 passed / 18 skipped)
+last_updated: "2026-06-15T12:41:54Z"
+last_activity: 2026-06-15 -- Completed Phase 04 Plan 01 (Wave-0 scaffolds + TTSVoice.tags)
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 19
-  completed_plans: 13
-  percent: 43
+  completed_plans: 14
+  percent: 46
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-29)
 
 **Core value:** Convert documents into listenable audiobooks entirely on-device — so even private or sensitive files can be turned into audio without sending them anywhere.
-**Current focus:** Phase 03 — native-os-tts-new-default
+**Current focus:** Phase 04 — engine-management-voice-catalog
 
 ## Current Position
 
-Phase: 03 (native-os-tts-new-default) — EXECUTING (all 5 plans implemented; 1 blocking Windows UAT carried forward)
-Plan: 5 of 5 — implementation complete
-Status: Ready to execute
-Last activity: 2026-06-15 -- Phase 04 planning complete
+Phase: 04 (engine-management-voice-catalog) — EXECUTING
+Plan: 2 of 6
+Status: Executing Phase 04 (04-01 complete; Wave 2 next)
+Last activity: 2026-06-15 -- Completed Phase 04 Plan 01 (Wave-0 scaffolds + TTSVoice.tags)
 
-Progress: [██████████] 100% (plans implemented; Windows WinRT UAT pending)
+Progress: [█████░░░░░] 46% (14/19 plans complete; Phase 04 Wave-0 foundation landed)
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Progress: [██████████] 100% (plans implemented; Windows WinR
 | Phase 03 P03 | 3min | 3 tasks | 6 files |
 | Phase 03 P04 | ~9min impl (wall ~25h spanning blocking human-verify) | 2 tasks (1 auto/TDD + 1 blocking checkpoint) | 5 files (4 planned + diana/tts/registry.py; +1 in-plan deviation = empty-filter crash fix 7be54ac) |
 | Phase 03 P05 | ~4min impl | 2 of 3 tasks (2 auto/TDD; Task 3 blocking Windows UAT DEFERRED, not blocked) | 4 files (3 planned modified + 1 deferred-UAT created; matches files_modified; no scope expansion) |
+| Phase 04 P01 | ~9min | 3 tasks (3 auto; zero deviations) | 10 files (8 created: 7 scaffolds + manifest fixture; 2 modified: base.py + pyproject.toml — matches files_modified) |
 
 ## Accumulated Context
 
@@ -72,6 +73,10 @@ Progress: [██████████] 100% (plans implemented; Windows WinR
 
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
+
+- [Phase 04 plan 01]: TTSVoice extended with a trailing-defaulted `tags: tuple[str, ...] = ()` field (A3/D-14) — chosen over a parallel dict, mirroring the Phase-3 tier/bilingual precedent so the 5 piper + 9 kokoro 4-arg positional VOICES lists stay valid with zero edits. This is the one shared contract Plan 05's voice_labels layer and Plan 06's cross-engine browser build on; landed in Wave 0 so it exists before either is built.
+- [Phase 04 plan 01]: Wave-0 scaffold pattern reaffirmed (same as 03-01) — 7 test files (downloader/downloader_net/catalog/install_state/voice_import/voice_labels/uninstall) are guarded-import + skipif with REAL assertion bodies (never `pass`/xfail) so collection stays green now and each flips to a live regression gate when its symbol lands in Plans 02/04/05 — no later test-file edits. Planner's-choice symbols (downloader/catalog/install_state/voice_labels module homes; the in-use predicate's arity) are bound via multi-candidate import-probe loops + inspect.signature tolerance.
+- [Phase 04 plan 01]: The HARD-03 import-traversal scaffold (test_voice_import) asserts the security INVARIANT — resolved dest stays contained within model_dir + a .onnx/.onnx.json extension allow-list raises — rather than mandating a raise on `../`, because RESEARCH Pattern 5's reference safe_voice_dest applies os.path.basename first (neutralizing traversal). The scaffold therefore binds whether Plan 04 strips-and-contains or rejects-outright. Live baseline this session was 379 passed / 0 skipped (the planning-doc "2 skipped" had already flipped live in 03-05); post-plan 380 passed / 18 skipped — no regression.
 
 - [Roadmap]: Structure = vertical slices in dependency order (brownfield; infra exists; each phase ships a usable capability)
 - [Roadmap]: Foundation (RETIRE-01 + PLAT-01) ships first — gates on-demand downloads and packaging

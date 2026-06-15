@@ -147,7 +147,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — Wave-0 test scaffolds (7 files) + voices manifest fixture + network marker + TTSVoice.tags field (Nyquist contract; D-14 substrate)
+- [x] 04-01-PLAN.md — Wave-0 test scaffolds (7 files) + voices manifest fixture + network marker + TTSVoice.tags field (Nyquist contract; D-14 substrate) — DONE (e84052b; suite 380 passed / 18 skipped)
 
 **Wave 2** *(blocked on Wave 1)*
 
