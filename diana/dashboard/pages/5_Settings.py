@@ -16,7 +16,7 @@ from diana.dashboard.voice_cache import cached_voices as _cached_voices
 from diana.dashboard.voice_cache import clear_voice_cache
 from diana.database import get_setting, set_setting
 from diana.downloads.downloader import clean_partials, download_file, has_space
-from diana.tts import catalog, heavy_install, install_state
+from diana.tts import catalog, custom_voices, heavy_install, install_state
 from diana.tts.kokoro_engine import (
     KOKORO_DEFAULT_VARIANT,
     KOKORO_MODEL_VARIANTS,
@@ -627,6 +627,53 @@ def _render_uninstall_control(voice_id: str, footprint: int) -> None:
                 st.rerun()
         with _no:
             if st.button("Cancel", key=f"uninstall_no_{voice_id}"):
+                st.session_state.pop(_confirm_key, None)
+                st.rerun()
+
+
+def _render_custom_voice_remove(voice_id: str, display_name: str) -> None:
+    """Remove a saved custom voice: in-use block -> confirm + freed space (D-14/D-16).
+
+    The ``_render_uninstall_control`` two-step idiom, pointed at the engine-agnostic
+    Custom Voices pool. The first "Remove" click runs ``custom_voices.remove_custom_voice``'s
+    in-use check implicitly by attempting removal only after a confirm: step 1 probes
+    ``install_state.voice_in_use`` across the cloning engines and REFUSES (tells the user to
+    switch first) if the voice is a non-terminal job's choice or a cloning-engine default;
+    step 2 confirms, deletes the clip + transcript (scoped to ``custom_voices_dir()``),
+    clears the shared voice cache so it leaves every picker with no restart, and reruns. The
+    confirm flag is keyed per voice in ``st.session_state`` so two rows never interfere.
+    """
+    _confirm_key = f"_cv_remove_confirm_{voice_id}"
+    if not st.session_state.get(_confirm_key):
+        if st.button("Remove", key=f"cv_remove_{voice_id}"):
+            # Probe the in-use block across the cloning engines (a custom voice is
+            # engine-agnostic, so any of them may hold it as a default) BEFORE arming.
+            reason = (
+                install_state.voice_in_use(config.storage.database_path, "f5", voice_id)
+                or install_state.voice_in_use(config.storage.database_path, "fish", voice_id)
+            )
+            if reason:
+                st.warning(
+                    f"This voice is {reason} — switch to another voice first, "
+                    "then remove it."
+                )
+            else:
+                st.session_state[_confirm_key] = True
+                st.rerun()
+    else:
+        st.caption(f"Remove '{display_name}'? This cannot be undone.")
+        _yes, _no = st.columns(2)
+        with _yes:
+            if st.button("Confirm remove", key=f"cv_remove_yes_{voice_id}", type="primary"):
+                freed = custom_voices.remove_custom_voice(
+                    config.storage.database_path, "f5", voice_id
+                )
+                st.session_state.pop(_confirm_key, None)
+                clear_voice_cache()  # voice leaves every picker + browser, no restart
+                st.success(f"Removed '{display_name}'. Freed {freed / 1e6:.1f} MB.")
+                st.rerun()
+        with _no:
+            if st.button("Cancel", key=f"cv_remove_no_{voice_id}"):
                 st.session_state.pop(_confirm_key, None)
                 st.rerun()
 
@@ -1852,6 +1899,122 @@ with tab_voices:
             st.success(_msg)
         else:
             st.error(_msg)
+
+    # CUSTOM VOICES (HEAVY-02, D-11..D-14): the reusable, ENGINE-AGNOSTIC reference-clip
+    # library that cloning engines reuse (F5 now; Fish in 05-07). A user supplies a voice
+    # TWO ways — upload an audio file + transcript, OR record in-app + type the transcript
+    # (the transcript is ALWAYS user-provided — no STT, D-12). Each clip is validated
+    # (reject-with-a-message, never a crash — D-13) and saved/named/removable (D-14). Saved
+    # voices flow through the dynamic registry._f5_voices into the Upload picker AND the
+    # "Browse all voices" cross-engine table automatically — no extra browser code here.
+    st.divider()
+    st.subheader("Custom Voices")
+    st.caption(
+        "Add your own voice for cloning engines (like F5). Provide a short, clear "
+        "reference clip (about 2–12 seconds) AND its exact transcript — either upload "
+        "an audio file or record one right here. Saved voices appear in the Upload "
+        "voice picker and the **Browse all voices** table above, and can be removed "
+        "any time."
+    )
+
+    _cv_upload_tab, _cv_record_tab = st.tabs(["Upload a clip", "Record a clip"])
+
+    # --- UPLOAD: an audio file + a transcript (typed OR a .txt file) — D-11 -----------
+    with _cv_upload_tab:
+        _cv_up_name = st.text_input(
+            "Voice name", value="", placeholder="e.g. My narration voice",
+            key="cv_upload_name",
+        )
+        _cv_up_audio = st.file_uploader(
+            "Reference audio (.wav or .mp3)",
+            type=["wav", "mp3"],
+            accept_multiple_files=False,
+            key="cv_upload_audio",
+            help="A short clip (about 2–12 seconds) of clear speech in the voice to clone.",
+        )
+        _cv_up_txt_file = st.file_uploader(
+            "Transcript file (.txt) — optional if you type it below",
+            type=["txt"],
+            accept_multiple_files=False,
+            key="cv_upload_txt",
+        )
+        _cv_up_transcript = st.text_area(
+            "Transcript (the exact words spoken in the clip)",
+            value="",
+            key="cv_upload_transcript",
+            help="Required. Type the exact words from the clip, or upload a .txt above.",
+        )
+        if st.button("Add custom voice", key="cv_upload_add", type="primary"):
+            # Prefer a typed transcript; fall back to the uploaded .txt (D-12 user-provided).
+            _transcript = (_cv_up_transcript or "").strip()
+            if not _transcript and _cv_up_txt_file is not None:
+                try:
+                    _transcript = _cv_up_txt_file.getvalue().decode("utf-8", "replace").strip()
+                except Exception:  # noqa: BLE001 — a bad .txt is reported, never a crash
+                    _transcript = ""
+            if _cv_up_audio is None:
+                st.error("Upload a .wav or .mp3 reference clip first.")
+            else:
+                # engine-agnostic pool (D-11): the engine arg is unused — pass None.
+                _ok, _msg = custom_voices.save_custom_voice(
+                    config.storage.database_path, None, _cv_up_name,
+                    _cv_up_audio, _transcript,
+                )
+                if _ok:
+                    clear_voice_cache()  # new voice appears in pickers/browser, no restart
+                    st.success(_msg)
+                else:
+                    st.error(_msg)
+
+    # --- CAPTURE: record in-app via st.audio_input + a typed transcript — D-11 ---------
+    with _cv_record_tab:
+        _cv_rec_name = st.text_input(
+            "Voice name", value="", placeholder="e.g. My narration voice",
+            key="cv_record_name",
+        )
+        # st.audio_input records 16 kHz mono in the browser (Pitfall 5 — validation
+        # accepts sub-24 kHz). Requires streamlit>=1.40 (bumped in 05-02).
+        _cv_rec_audio = st.audio_input(
+            "Record a reference clip", key="cv_record_audio",
+        )
+        _cv_rec_transcript = st.text_area(
+            "Transcript (the exact words you spoke)",
+            value="",
+            key="cv_record_transcript",
+            help="Required. Type the exact words from your recording (D-12 — no "
+                 "auto-transcribe).",
+        )
+        if st.button("Add recorded voice", key="cv_record_add", type="primary"):
+            if _cv_rec_audio is None:
+                st.error("Record a clip first using the recorder above.")
+            else:
+                _ok, _msg = custom_voices.save_custom_voice(
+                    config.storage.database_path, None, _cv_rec_name,
+                    _cv_rec_audio, (_cv_rec_transcript or "").strip(),
+                )
+                if _ok:
+                    clear_voice_cache()
+                    st.success(_msg)
+                else:
+                    st.error(_msg)
+
+    # --- LIBRARY: saved custom voices, each removable (two-step confirm) — D-14 --------
+    st.markdown("**Your saved custom voices**")
+    _saved_voices = custom_voices.list_custom_voices(config.storage.database_path)
+    if not _saved_voices:
+        st.caption(
+            "No custom voices yet. Add one above — it becomes selectable for any "
+            "cloning engine and appears in the Browse-all table."
+        )
+    else:
+        for _cv in _saved_voices:
+            _row_name, _row_action = st.columns([3, 1])
+            with _row_name:
+                st.write(f"**{_cv.name}**")
+                st.caption("Reusable across jobs · appears in the Upload picker & "
+                           "Browse-all table")
+            with _row_action:
+                _render_custom_voice_remove(_cv.id, _cv.name)
 
 # ---------------------------------------------------------------------------
 # Processing

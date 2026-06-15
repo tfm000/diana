@@ -111,8 +111,38 @@ def get_engine_voices(engine_name: str, config: DianaConfig | None = None) -> li
             eng.shutdown()
     if engine_name == "piper":
         return _piper_voices()
+    if engine_name == "f5":
+        return _f5_voices()
     cls = _get_engine_class(engine_name)
     return list(cls.VOICES)
+
+
+def _f5_voices() -> list[TTSVoice]:
+    """The F5 bundled default MERGED with every saved custom voice (D-14/D-15).
+
+    F5 has no baked-in voices (zero-shot clone): it surfaces the single bundled,
+    license-clean default (``F5Engine.VOICES``) plus the shared engine-agnostic Custom
+    Voices pool (``custom_voices.list_custom_voices`` — D-11), so a saved custom voice
+    appears in the Upload picker AND, via ``all_engine_voices``, the cross-engine browser
+    (D-14). Mirrors ``_piper_voices``: the static default first, each custom voice not
+    already present appended, deduped by id.
+
+    Cheap by design: a ``*.wav`` glob + an ``app_settings`` read — no engine SDK import
+    (ENGINE-01 / D-17). ``f5_engine``'s module top is heavy-import-free, and ``custom_voices``
+    imports no torch, so this leaves ``torch`` OUT of ``sys.modules`` on the enumeration path.
+    Both are imported lazily so the cleaning path (``engine_is_ascii_only``) never pulls them.
+    """
+    from diana.tts import custom_voices
+    from diana.tts.f5_engine import F5Engine
+
+    voices = list(F5Engine.VOICES)
+    seen = {v.id for v in voices}
+    for v in custom_voices.list_custom_voices():
+        if v.id in seen:
+            continue
+        seen.add(v.id)
+        voices.append(v)
+    return voices
 
 
 def _piper_voices() -> list[TTSVoice]:
