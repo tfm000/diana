@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import threading
@@ -20,12 +21,17 @@ from diana.tts.native_os_engine import (
     resolve_selected_voice_id,
 )
 from diana.tts.registry import (
+    create_engine,
     list_engines,
     resolve_default_voice,
 )
 from diana.utils import detect_device_theme
 
 logger = logging.getLogger(__name__)
+
+# Short fixed text for the installed-voice live preview (D-12), mirroring the Upload
+# page's DEFAULT_PREVIEW_TEXT so both pages sound the same.
+_PREVIEW_TEXT = "Hello, this is a preview of my voice. Welcome to Diana."
 
 
 @st.cache_data(show_spinner=False)
@@ -277,6 +283,284 @@ def _system_language_first(voices, system_lang):
     return order_by_quality(in_lang) + order_by_quality(others)
 
 
+def _catalog_raw_entries() -> dict:
+    """RAW ``{voice_id: entry}`` for install — refreshed live (session) over bundled.
+
+    D-01/D-02: browse starts from the bundled curated snapshot (offline). A "Refresh
+    catalog" merges the live manifest's raw entries into session state so every
+    browsed voice — not just the curated nine — can install (each entry carries the
+    ``files`` path + ``size_bytes`` + ``md5`` the download needs). The bundled curated
+    entries are always present as the base so curated voices install offline even
+    before any refresh.
+    """
+    entries = dict(_curated_piper_entries())
+    entries.update(st.session_state.get("catalog_entries_raw", {}))
+    return entries
+
+
+def _catalog_voices(show_all: bool) -> list:
+    """The TTSVoice list to browse: curated-flat default, or the full set on show-all.
+
+    Default (``show_all`` False): the curated best-per-language flat subset from the
+    bundled snapshot (offline/instant, D-01). Show-all: the full manifest — the live
+    refreshed list when a "Refresh catalog" has run this session, else the full
+    bundled snapshot (D-02). Pure read of cached/bundled data; no network here (the
+    only network touch is the explicit Refresh button).
+    """
+    if not show_all:
+        return catalog.curated_subset(catalog.load_bundled_manifest())
+    refreshed = st.session_state.get("catalog_voices_all")
+    if refreshed is not None:
+        return refreshed
+    return catalog.load_bundled_manifest()
+
+
+def _refresh_catalog_state() -> None:
+    """Fetch the live manifest ONCE and cache both raw entries + parsed voices (D-02).
+
+    The single network touch (``catalog.refresh_catalog_raw``), behind the explicit
+    "Refresh catalog" button. Stores the raw entry map (for install of any voice) and
+    the parsed ``TTSVoice`` list (for the show-all browse) in session state; a fetch
+    failure degrades to the bundled snapshot inside ``refresh_catalog_raw`` and never
+    crashes the page (Pitfall 6).
+    """
+    raw = catalog.refresh_catalog_raw()
+    st.session_state["catalog_entries_raw"] = raw
+    st.session_state["catalog_voices_all"] = catalog.parse_manifest(raw)
+
+
+def _voice_dir_for_entry(entry: dict) -> str:
+    """The voice's repo-relative dir (parent of its ``.onnx`` ``files`` key) for samples.
+
+    Returns ``""`` when the entry has no ``.onnx`` file path (a degraded/empty entry),
+    so the caller can skip the fetched-sample path gracefully.
+    """
+    for file_path in entry.get("files", {}):
+        if file_path.endswith(".onnx"):
+            return file_path.rsplit("/", 1)[0] if "/" in file_path else ""
+    return ""
+
+
+def _bundled_sample_path(voice_id: str) -> "Path | None":
+    """A bundled curated preview clip for ``voice_id`` if one ships in-app (D-12).
+
+    Looks for ``diana/data/samples/{voice_id}.mp3`` (the offline curated-sample home;
+    the package-data glob ``data/samples/*`` was declared in Plan 02). Returns the
+    path when present, else ``None`` (the caller then fetches+caches on demand).
+    """
+    try:
+        res = resources.files("diana.data.samples").joinpath(f"{voice_id}.mp3")
+        p = Path(str(res))
+        return p if p.is_file() else None
+    except (ModuleNotFoundError, FileNotFoundError):
+        return None
+
+
+def _preview_installed_voice(voice_id: str, speed: float) -> bytes:
+    """Live-synthesize a short preview for an INSTALLED Piper voice (D-12/VOICE-03).
+
+    Reuses the Phase-3 ``create_engine -> synthesize -> bytes`` path (1_Upload.py:234)
+    on the piper engine. Cached in session by voice id so a repeat preview is instant.
+    Runs on the script thread (Streamlit-safe); the heavy import lives in
+    ``create_engine``.
+    """
+    cache_key = f"settings_preview_{voice_id}"
+    cached = st.session_state.get(cache_key)
+    if cached is not None:
+        return cached
+    eng = create_engine(config, engine_name="piper")
+    audio = asyncio.run(eng.synthesize(_PREVIEW_TEXT, voice=voice_id, speed=speed))
+    eng.shutdown()
+    st.session_state[cache_key] = audio
+    return audio
+
+
+def _import_voice_pair(files) -> tuple[bool, str]:
+    """Validate + land a manually uploaded ``.onnx`` + ``.onnx.json`` pair (D-13/VOICE-04).
+
+    ``files`` is the ``st.file_uploader`` list. Validates EACH name through
+    ``catalog.safe_voice_dest`` (basename + extension allow-list + resolved-prefix
+    under ``model_dir`` — HARD-03/T-04-PATH), requires BOTH halves of the pair sharing
+    one base (T-04-PAIR), confirms the ``.onnx.json`` parses as JSON, then writes both
+    into ``paths.model_dir()`` where ``piper_engine._resolve_model_path`` finds them
+    (zero engine edit). Returns ``(ok, message)``; never raises to the UI — a bad pair
+    is reported, not crashed.
+    """
+    if not files:
+        return False, "Select both the .onnx and its .onnx.json file."
+    by_name = {f.name: f for f in files}
+    onnx = [n for n in by_name if n.endswith(".onnx")]
+    cfg = [n for n in by_name if n.endswith(".onnx.json")]
+    if not onnx or not cfg:
+        return False, (
+            "Import needs BOTH files: the model `.onnx` and its `.onnx.json` config. "
+            "If the .onnx is too large to upload, use 'Import from a path on disk' "
+            "below (it sidesteps the upload size limit)."
+        )
+    # The pair must share one base (en_US-amy-medium.onnx + en_US-amy-medium.onnx.json).
+    onnx_base = os.path.basename(onnx[0])[: -len(".onnx")]
+    if not any(os.path.basename(c)[: -len(".onnx.json")] == onnx_base for c in cfg):
+        return False, "The .onnx and .onnx.json names must match (same voice base)."
+    try:
+        dests: list[tuple[Path, bytes]] = []
+        for name, f in by_name.items():
+            if not (name.endswith(".onnx") or name.endswith(".onnx.json")):
+                continue  # ignore any extra non-pair file the uploader returned
+            dest = catalog.safe_voice_dest(name)  # raises on bad ext / traversal
+            data = f.getvalue()
+            if name.endswith(".onnx.json"):
+                json.loads(data)  # T-04-PAIR: reject a corrupt/non-JSON config
+            dests.append((dest, data))
+        for dest, data in dests:
+            dest.write_bytes(data)
+    except ValueError as e:
+        return False, str(e)
+    except json.JSONDecodeError:
+        return False, "The .onnx.json file is not valid JSON — re-download the pair."
+    return True, f"Imported '{onnx_base}'. It is now selectable on the Upload page."
+
+
+def _import_voice_from_path(onnx_path_str: str) -> tuple[bool, str]:
+    """Import a Piper voice the user already has on disk, by path (D-13/VOICE-04).
+
+    The path-entry half of the dual import — it sidesteps the ``file_uploader`` size
+    cap (Pitfall 7) for large local ``.onnx`` files. Takes the ``.onnx`` path, locates
+    the sibling ``.onnx.json``, validates BOTH basenames through
+    ``catalog.safe_voice_dest`` (extension + containment), confirms the config parses,
+    then copies both into ``paths.model_dir()``. Returns ``(ok, message)``; never
+    raises to the UI.
+    """
+    raw = (onnx_path_str or "").strip().strip('"').strip("'")
+    if not raw:
+        return False, "Enter the full path to a .onnx file."
+    src = Path(raw).expanduser()
+    if not src.is_file():
+        return False, f"File not found: {src}"
+    if not src.name.endswith(".onnx"):
+        return False, "Point to the model .onnx file (its .onnx.json sits beside it)."
+    sibling = src.with_name(src.name + ".json")  # en_US-amy-medium.onnx.json
+    if not sibling.is_file():
+        return False, (
+            f"Missing config file beside it: expected '{sibling.name}' next to the "
+            ".onnx. Both files are required."
+        )
+    try:
+        json.loads(sibling.read_bytes())  # T-04-PAIR
+        onnx_dest = catalog.safe_voice_dest(src.name)         # raises on bad ext
+        cfg_dest = catalog.safe_voice_dest(sibling.name)
+        onnx_dest.write_bytes(src.read_bytes())
+        cfg_dest.write_bytes(sibling.read_bytes())
+    except ValueError as e:
+        return False, str(e)
+    except json.JSONDecodeError:
+        return False, "The .onnx.json file is not valid JSON — check the file."
+    return True, f"Imported '{src.name[:-len('.onnx')]}'. It is now selectable on Upload."
+
+
+def _render_voice_row(voice, entry: dict, speed: float) -> None:
+    """One catalog row: badge + install/resume/cancel + preview (D-11/D-06/D-12).
+
+    Shared by the curated flat view and the grouped show-all view so both render
+    identically. ``entry`` is the raw manifest entry for this voice (``files`` map);
+    an empty entry (a refreshed voice whose raw entry is unavailable) disables Install
+    with a "Refresh catalog" nudge rather than spawning a no-op download. Preview is
+    three-mode (D-12/VOICE-03): live synthesis when installed, a bundled clip when one
+    ships, else an on-demand fetched+cached ``speaker_0.mp3``.
+    """
+    installed = install_state.piper_voice_installed(voice.id)
+    has_entry = bool(entry.get("files"))
+    # Footprint: on-disk size when installed, else the manifest estimate (D-11).
+    footprint = (
+        install_state.piper_footprint_bytes(voice.id)
+        if installed
+        else catalog.voice_footprint_bytes(entry)
+    )
+    mb = footprint / 1e6
+
+    with st.container(border=True):
+        info_col, action_col = st.columns([3, 1])
+        with info_col:
+            st.markdown(f"**{voice.name}**  \n`{voice.id}` · {voice.language} · {voice.tier}")
+            # ENGINE-03 / D-11 install-state + footprint badge.
+            if installed:
+                st.success(f"Ready · {mb:.1f} MB on disk", icon="✅")
+            elif has_entry:
+                st.caption(f"~{mb:.1f} MB, downloads on first use")
+            else:
+                st.caption("Size unknown — click **Refresh catalog** to enable install")
+
+        dl_state = st.session_state.get("dl_state", {})
+        state = dl_state.get(voice.id)
+        action = _download_action(state)  # pure state -> action (D-06/D-07)
+        active = bool(state) and action != "install"
+
+        with action_col:
+            if installed and action in ("install", "done"):
+                st.button("Installed", key=f"installed_{voice.id}", disabled=True)
+            elif action == "downloading":
+                if st.button("Cancel", key=f"cancel_{voice.id}"):  # D-07
+                    state["cancel"] = True
+                    st.rerun()
+            elif action == "cancelling":
+                # Cancel requested, worker not yet stopped — never offer Resume here
+                # (a second writer on the same .part — Pitfall 3).
+                st.button("Cancelling…", key=f"cancelling_{voice.id}", disabled=True)
+            elif action == "resume":
+                # D-06: Resume re-spawns, offsetting from the existing .part.
+                if st.button("Resume", key=f"resume_{voice.id}"):
+                    _start_piper_download(voice.id, entry, int(footprint))
+                    st.rerun()
+            elif not has_entry:
+                # No raw entry yet (a refreshed voice we lack files for) — cannot build
+                # a download URL, so disable Install rather than spawn a no-op thread.
+                st.button("Install", key=f"install_{voice.id}", type="primary", disabled=True)
+            else:
+                if st.button("Install", key=f"install_{voice.id}", type="primary"):
+                    # D-05: universal disk-space pre-check gates EVERY download.
+                    ok, free = has_space(paths.model_dir(), int(footprint))
+                    if not ok:
+                        st.error(
+                            f"Not enough disk space: need ~{footprint / 1e6:.1f} MB "
+                            f"(plus headroom), only {free / 1e6:.1f} MB free. "
+                            "Free up space and try again."
+                        )
+                    else:
+                        _start_piper_download(voice.id, entry, int(footprint))
+                        st.rerun()
+
+        # Live byte-progress / result, polled from the script thread (D-08).
+        if active:
+            _render_download_progress(voice.id)
+
+        # PREVIEW (D-12/VOICE-03): live synth when installed; a bundled or on-demand
+        # fetched+cached sample clip when not. Plays via st.audio on the script thread.
+        if st.button("Preview", key=f"preview_{voice.id}"):
+            if installed:
+                try:
+                    with st.spinner("Synthesizing preview…"):
+                        st.audio(_preview_installed_voice(voice.id, speed), format="audio/wav")
+                except Exception as e:  # noqa: BLE001 — surface, never crash the tab
+                    st.error(f"Preview failed: {e}")
+            else:
+                bundled = _bundled_sample_path(voice.id)
+                if bundled is not None:
+                    st.audio(str(bundled), format="audio/mp3")  # offline curated clip
+                else:
+                    voice_dir = _voice_dir_for_entry(entry)
+                    if not voice_dir:
+                        st.info("Preview unavailable — click **Refresh catalog**, then retry.")
+                    else:
+                        try:
+                            with st.spinner("Fetching sample…"):
+                                clip = catalog.fetch_sample(voice_dir)  # cached after first
+                            st.audio(str(clip), format="audio/mp3")
+                        except Exception as e:  # noqa: BLE001 — Pitfall 6 graceful 404
+                            st.warning(
+                                "Couldn't fetch a sample for this voice "
+                                f"({e}). It may have moved — try **Refresh catalog**."
+                            )
+
+
 def _engine_default_voice(engine_name: str, config_default: str) -> str:
     """Cheap per-engine default voice id without loading heavy engine models.
 
@@ -473,94 +757,132 @@ with tab_general:
     )
 
 # ---------------------------------------------------------------------------
-# Voices — the management hub (D-09). This plan ships the WALKING SLICE: install
-# ONE curated Piper voice end-to-end (badge -> disk-check -> threaded resumable
-# download -> md5 atomic install -> selectable). Full browse/filter/preview/import/
-# uninstall/Kokoro reuse land in Plans 04-06.
+# Voices — the management hub (D-09). Full catalog browse (curated-flat default +
+# Show-all grouped-by-language over the refreshable manifest, D-01/D-02/D-03),
+# three-mode preview (bundled/fetched sample + live synth, D-12/VOICE-03), and
+# validated dual-path manual import (upload + path, D-13/VOICE-04/HARD-03). The
+# install machinery itself (badge -> disk-check -> threaded resumable download ->
+# md5 atomic install -> selectable) is the Plan-03 walking slice, reused per row.
 # ---------------------------------------------------------------------------
 with tab_voices:
     st.subheader("Voices")
     st.caption(
-        "Install additional Piper voices on demand — no terminal needed. Voices "
-        "download into your per-user cache and become selectable for a job. "
-        "Full catalog browse, preview, import, and uninstall arrive soon."
+        "Browse and install Piper voices on demand — no terminal needed. Voices "
+        "download into your per-user cache and become selectable for a job. Preview "
+        "any voice before installing, or import a voice you already have on disk."
     )
 
-    _curated_entries = _curated_piper_entries()
-    _curated_voices = catalog.curated_subset(catalog.load_bundled_manifest())
+    # Per-row speed for the installed-voice live preview (same scale as Upload).
+    _preview_speed = config.tts.speed
 
-    for _v in _curated_voices:
-        _entry = _curated_entries.get(_v.id, {})
-        _installed = install_state.piper_voice_installed(_v.id)
-        # Footprint: on-disk size when installed, else the manifest estimate (D-11).
-        _footprint = (
-            install_state.piper_footprint_bytes(_v.id)
-            if _installed
-            else catalog.voice_footprint_bytes(_entry)
+    # BROWSE controls: Show-all toggle + Refresh + the reused Phase-3 filters (D-03).
+    _ctl_show, _ctl_refresh = st.columns([3, 1])
+    with _ctl_show:
+        _show_all = st.toggle(
+            "Show all voices",
+            value=False,
+            help="Off: a curated best-per-language list (offline). On: the full "
+                 "catalog grouped by language. Use Refresh catalog to fetch the latest.",
         )
-        _mb = _footprint / 1e6
+    with _ctl_refresh:
+        if st.button("Refresh catalog", help="Re-fetch the live voice list (D-02)."):
+            with st.spinner("Refreshing catalog…"):
+                _refresh_catalog_state()
+            st.rerun()
 
-        with st.container(border=True):
-            _info_col, _action_col = st.columns([3, 1])
-            with _info_col:
-                st.markdown(f"**{_v.name}**  \n`{_v.id}` · {_v.language} · {_v.tier}")
-                # ENGINE-03 / D-11 install-state + footprint badge.
-                if _installed:
-                    st.success(f"Ready · {_mb:.1f} MB on disk", icon="✅")
-                else:
-                    st.caption(f"~{_mb:.1f} MB, downloads on first use")
+    _browse_voices = _catalog_voices(_show_all)
+    _raw_entries = _catalog_raw_entries()
 
-            _dl_state = st.session_state.get("dl_state", {})
-            _state = _dl_state.get(_v.id)
-            # Pure state -> action decision (D-06/D-07); unit-tested off the UI.
-            _action = _download_action(_state)
-            # Any live record (in-flight, cancelling, or terminal interrupted) drives
-            # the progress poller below; a cleared/absent record does not.
-            _active = bool(_state) and _action != "install"
+    # Reused Phase-3 filter/search widgets, pointed at CATALOG data — language options
+    # derive from the manifest, not OS voices (D-03). Plain substring search (no regex).
+    _langs = sorted({(v.language or "").strip().lower() for v in _browse_voices if v.language})
+    _lang_choice = st.selectbox(
+        "Language", ["All languages"] + _langs, index=0, key="catalog_lang"
+    )
+    _sel_language = None if _lang_choice == "All languages" else _lang_choice
 
-            with _action_col:
-                if _installed and _action in ("install", "done"):
-                    st.button("Installed", key=f"installed_{_v.id}", disabled=True)
-                elif _action == "downloading":
-                    # D-07: Cancel halts but keeps the .part for a later Resume.
-                    if st.button("Cancel", key=f"cancel_{_v.id}"):
-                        _state["cancel"] = True
-                        st.rerun()
-                elif _action == "cancelling":
-                    # Cancel requested but the worker has not yet stopped — never offer
-                    # Resume here (a second writer on the same .part — Pitfall 3).
-                    st.button("Cancelling…", key=f"cancelling_{_v.id}", disabled=True)
-                elif _action == "resume":
-                    # D-06: Resume re-spawns the download, which offsets from the
-                    # existing .part rather than restarting from zero. Reachable for a
-                    # TERMINAL cancelled record OR an errored one.
-                    if st.button("Resume", key=f"resume_{_v.id}"):
-                        _start_piper_download(_v.id, _entry, int(_footprint))
-                        st.rerun()
-                else:
-                    if st.button("Install", key=f"install_{_v.id}", type="primary"):
-                        # D-05: universal disk-space pre-check gates EVERY download.
-                        # Refuse before a byte is written when space is insufficient.
-                        _ok, _free = has_space(paths.model_dir(), int(_footprint))
-                        if not _ok:
-                            st.error(
-                                f"Not enough disk space: need ~{_footprint / 1e6:.1f} MB "
-                                f"(plus headroom), only {_free / 1e6:.1f} MB free. "
-                                "Free up space and try again."
-                            )
-                        else:
-                            _start_piper_download(_v.id, _entry, int(_footprint))
-                            st.rerun()
+    _tiers = sorted({(v.tier or "").strip().lower() for v in _browse_voices if v.tier})
+    _tier_choice = st.selectbox(
+        "Quality", ["All qualities"] + _tiers, index=0, key="catalog_tier"
+    )
+    _sel_tier = None if _tier_choice == "All qualities" else _tier_choice
 
-            # Live byte-progress / result, polled from the script thread (D-08).
-            if _active:
-                _render_download_progress(_v.id)
+    _name_query = st.text_input(
+        "Search voices", value="", placeholder="Type part of a name…",
+        key="catalog_search",
+    )
 
-    st.divider()
+    _filtered = order_by_quality(
+        filter_voices(
+            _browse_voices, language=_sel_language, tier=_sel_tier,
+            query=_name_query or None,
+        )
+    )
+
+    if not _filtered:
+        # Empty filter/search result must not crash (Phase-3 None-safe discipline).
+        st.info(
+            "No voices match your filters. Clear the language/quality filter or "
+            "search box to see the catalog."
+        )
+    elif _show_all:
+        # Show-all: grouped by language in collapsible sections (D-03) — a flat
+        # ~900-row list would be unusable.
+        _grouped = catalog.group_by_language(_filtered)
+        for _lang in sorted(_grouped):
+            _bucket = _grouped[_lang]
+            with st.expander(f"{_lang or 'unknown'} ({len(_bucket)})"):
+                for _v in _bucket:
+                    _render_voice_row(_v, _raw_entries.get(_v.id, {}), _preview_speed)
+    else:
+        # Curated default: a flat list (offline, instant) — D-01.
+        for _v in _filtered:
+            _render_voice_row(_v, _raw_entries.get(_v.id, {}), _preview_speed)
+
     st.caption(
         "Tip: after a voice finishes installing it appears in the **Default Voice** "
         "picker (General tab) and the Upload page when you pick the Piper engine."
     )
+
+    # IMPORT (D-13/VOICE-04): BOTH in-app upload AND a path on disk, each validated
+    # through safe_voice_dest (extension allow-list + traversal containment, HARD-03).
+    st.divider()
+    st.subheader("Import a voice")
+    st.caption(
+        "Already have a Piper voice? Import its `.onnx` model and the matching "
+        "`.onnx.json` config. Both files are required."
+    )
+
+    _up_files = st.file_uploader(
+        "Upload the .onnx + .onnx.json pair",
+        type=["onnx", "json"],
+        accept_multiple_files=True,
+        help="Select BOTH files. If the .onnx is larger than the upload size limit "
+             "(Settings ▸ General ▸ Max upload size), use the path option below.",
+        key="voice_import_uploader",
+    )
+    if st.button("Import uploaded files", key="import_uploaded"):
+        _ok, _msg = _import_voice_pair(_up_files)
+        if _ok:
+            clear_voice_cache()  # make the new voice appear in pickers without restart
+            st.success(_msg)
+        else:
+            st.error(_msg)
+
+    st.markdown("**Or import from a path on disk** (sidesteps the upload size limit):")
+    _path_str = st.text_input(
+        "Full path to the .onnx file",
+        placeholder="/path/to/en_US-amy-medium.onnx",
+        key="voice_import_path",
+        label_visibility="collapsed",
+    )
+    if st.button("Import from path", key="import_from_path"):
+        _ok, _msg = _import_voice_from_path(_path_str)
+        if _ok:
+            clear_voice_cache()
+            st.success(_msg)
+        else:
+            st.error(_msg)
 
 # ---------------------------------------------------------------------------
 # Processing

@@ -1,0 +1,4 @@
+# Bundled curated preview-sample clips (D-12) land here as {voice_id}.mp3.
+# The package-data glob `data/samples/*` was declared in Plan 02 (pyproject.toml).
+# This marker keeps the directory present in the repo/package even when empty;
+# not-installed non-curated voices fetch+cache their sample on demand instead.

@@ -199,20 +199,45 @@ def load_bundled_manifest() -> list[TTSVoice]:
     return parse_manifest(voices)
 
 
-def refresh_catalog() -> list[TTSVoice]:
-    """GET the live voices.json; on any failure log a warning and fall back (D-02).
+def _load_bundled_raw() -> dict:
+    """The RAW bundled snapshot ``{voice_id: entry}`` (offline fallback for refresh).
+
+    Mirrors ``load_bundled_manifest`` but returns the raw entry map (with the
+    per-file ``size_bytes``/``md5_digest``/path needed to build a download URL and
+    verify bytes) rather than parsed ``TTSVoice`` objects.
+    """
+    raw = resources.files(_BUNDLED_PACKAGE).joinpath(_BUNDLED_RESOURCE).read_text(
+        encoding="utf-8")
+    data = json.loads(raw)
+    return data.get("voices", data) if isinstance(data, dict) else data
+
+
+def refresh_catalog_raw() -> dict:
+    """GET the live voices.json and return the RAW ``{voice_id: entry}`` map (D-02).
 
     This is the explicit "Refresh catalog" action — the only network touch in this
-    module. A network/parse failure never crashes the page: it degrades to the
-    bundled snapshot.
+    module. The raw map (not parsed ``TTSVoice`` objects) is returned so the caller
+    keeps each entry's ``files`` (path + ``size_bytes`` + ``md5_digest``) for the
+    on-demand install of any browsed voice, and can derive the display list via
+    ``parse_manifest``. A network/parse failure never crashes the page: it degrades
+    to the raw bundled snapshot.
     """
     try:
         r = requests.get(_MANIFEST_URL, timeout=30)
         r.raise_for_status()
-        return parse_manifest(r.json())
+        return r.json()
     except Exception as e:  # noqa: BLE001 — any failure degrades to the bundled snapshot
         logger.warning("Catalog refresh failed (%s); using bundled snapshot", e)
-        return load_bundled_manifest()
+        return _load_bundled_raw()
+
+
+def refresh_catalog() -> list[TTSVoice]:
+    """GET the live voices.json, parsed into ``TTSVoice`` objects (D-02).
+
+    The parsed view of ``refresh_catalog_raw`` (the single network touch). A
+    network/parse failure degrades to the bundled snapshot rather than crashing.
+    """
+    return parse_manifest(refresh_catalog_raw())
 
 
 def curated_subset(voices: list[TTSVoice]) -> list[TTSVoice]:
