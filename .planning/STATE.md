@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 02-04-PLAN.md (figures/captions/footnotes + corpus completion — CLEAN-01/03/08)
-last_updated: "2026-06-01T00:31:03.547Z"
-last_activity: 2026-06-01
+status: executing
+stopped_at: "Phase 03 plan 03-04 complete (voice-attribute picker UX, NATIVE-05) — human-verified + finalized; Wave 5 (03-05 WinRT) remains"
+last_updated: "2026-06-15T00:00:00.000Z"
+last_activity: 2026-06-15
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
-  percent: 29
+  total_plans: 13
+  completed_plans: 12
+  percent: 92
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-29)
 
 **Core value:** Convert documents into listenable audiobooks entirely on-device — so even private or sensitive files can be turned into audio without sending them anywhere.
-**Current focus:** Phase 02 — rule-based-cleaner-overhaul
+**Current focus:** Phase 03 — native-os-tts-new-default
 
 ## Current Position
 
-Phase: 02 (rule-based-cleaner-overhaul) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-06-01
+Phase: 03 (native-os-tts-new-default) — EXECUTING
+Plan: 5 of 5
+Status: Plan 03-04 complete (human-verified); ready to execute 03-05 (WinRT)
+Last activity: 2026-06-15
 
-Progress: [██████████] 100%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -60,6 +60,10 @@ Progress: [██████████] 100%
 | Phase 02 P02 | 4min | 2 tasks | 13 files |
 | Phase 02 P03 | 5min | 2 tasks | 7 files |
 | Phase 02 P04 | 13min | 3 tasks | 9 files |
+| Phase 03 P01 | 4min | 3 tasks | 4 files |
+| Phase 03 P02 | 2min | 2 tasks | 2 files |
+| Phase 03 P03 | 3min | 3 tasks | 6 files |
+| Phase 03 P04 | ~9min impl (wall ~25h spanning blocking human-verify) | 2 tasks (1 auto/TDD + 1 blocking checkpoint) | 5 files (4 planned + diana/tts/registry.py; +1 in-plan deviation = empty-filter crash fix 7be54ac) |
 
 ## Accumulated Context
 
@@ -97,6 +101,16 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 02 plan 04]: _repair_dangling whitespace quantifiers are BOUNDED ({0,8}/{1,8}) — the unbounded form was O(n^2) under re.sub on adversarial space runs (36s/9s observed and fixed mid-task, Rule-1). The non-spec ' .'->'.' substitution was dropped. ReDoS T-02-01 is now runtime-verified linear for the figure/caption/footnote stages.
 - [Phase ?]: [Phase 02 plan 04]: Footnote markers always (superscript U+00B9/B2/B3 + U+2070-2079 removed for ALL engines in _remove_citations); footnote BODIES best-effort (_remove_footnote_bodies drops a conservative 20+-char marker-prefixed capitalized block after a blank line, all-lines-match, at stage 6). The 20+-char gate keeps a short numbered list intact. CLEAN-03 satisfied, honestly scoped.
 - [Phase ?]: [Phase 02 plan 04]: Final no-figure-token removal invariant REGISTERED into the corpus _invariants (completing the removal set) across all 15 snapshots; a complete-stage-ordering source-index test pins every hard constraint; an EPUB/UTF-8 fixture extends coverage to all PDF/EPUB/TXT flavors; the planted-regression check turned the corpus RED with a legible diff and restored green. CLEAN-08 demonstrated (ROADMAP criterion #4).
+- [Phase ?]: [Phase 03 plan 01]: Wave-0 scaffold pattern = import-guard future symbols + skipif-gate dependent tests with real assertion bodies (NOT xfail) so collection stays green now and each test auto-flips to a live regression gate when its symbol lands in Plans 02-05 — no later test-file edits. Scaffolds probe multiple candidate module homes for planner's-choice symbols (filter_voices, the D-03 resolver).
+- [Phase ?]: [Phase 03 plan 01]: pytest-asyncio installed (1.4.0) + asyncio_mode='auto' in pyproject — removes the Phase-1 deferred async-test blocker (test_anthropic_cli_real_call now runs). KNOWN expected breaks deferred to Plan 03 (same wave that causes them): test_tts_registry::test_unknown_engine_defaults_ascii_only + test_local_only, and test_config default assertions, flip once native_os registers (_ASCII_ONLY=False, list_engines includes native_os, config default engine to native_os / voice to empty).
+- [Phase 03]: [Phase 03 plan 02]: TTSVoice extended with trailing-defaulted tier + bilingual fields (D-05) so kokoro/piper 4-arg positional VOICES stay valid with zero edits; optional default_voice() Protocol method deferred to Plan 03 with the engine
+- [Phase 03]: [Phase 03 plan 02]: macOS say -v '?' parsed via locale-anchored _SAY_LINE regex (never .split() — handles nested-parenthetical and non-ASCII names); pure parse_say_voices(text) seam is fixture-testable, enumerate_macos_voices() shells say via list-argv subprocess.run timeout=15 (T-03-03/04, V5)
+- [Phase 03]: [Phase 03 plan 02]: quality tier prelabelled from curated _NOVELTY/_ENHANCED sets (D-06) with compact fallback; gender='unknown' (say does not expose it). Both tdd=true tasks satisfied via Wave-0 03-01 scaffolds flipping skip->pass (RED is in the prior wave's git history); known native_os registry/config-default breaks remain Plan 03's to own
+- [Phase ?]: [Phase 03 plan 03]: NativeOSEngine = ONE class with internal sys.platform branch (not two engines); macOS _say_synth shells list-argv say -o --data-format=LEI16@22050 with text as the FINAL argv element (V5), tempfile+finally-unlink (V12), timeout=300; empty voice id => OS system default (D-02). WinRT methods stubbed NotImplementedError, marked for Plan 05, so the macOS path is complete + importable on a Mac with no winrt (no module-top winrt import).
+- [Phase ?]: [Phase 03 plan 03]: get_engine_voices('native_os') is the DYNAMIC branch (D-04) — constructs/initializes/shuts down a short-lived NativeOSEngine and returns live list_voices(); NativeOSEngine deliberately has NO static VOICES attribute (asserted by test) so the static-vs-dynamic break is structural. native_os registered across all 5 registry seams; list_engines() = [native_os, kokoro, piper] (native_os first, the default).
+- [Phase ?]: [Phase 03 plan 03]: default TTS engine flipped kokoro->native_os and voice af_heart->'' (D-01); NO migration (clean-break) — existing config.yaml untouched, only fresh configs change. The two documented known-break tests (test_tts_registry ascii_only/list_engines + test_config defaults) fixed in the SAME wave; coverage preserved by splitting the flipped ascii-only assertion into native_os-registered + genuinely-unknown cases. Full suite 374 passed / 4 skipped (remaining skips = Plan 04 filter_voices/resolve_default_voice + Plan 05 WinRT/SAPI5 boundaries).
+- [Phase 03]: [Phase 03 plan 04]: Voice-attribute picker UX (NATIVE-05) — pure Streamlit-free helpers filter_voices/order_by_quality/resolve_default_voice live in native_os_engine.py (no streamlit import; unit-tested), the UI wires them. Upload + Settings expose a language filter + quality/tier filter + name search around the voice dropdown (D-07), default to the OS system voice with best-quality-preferred ordering, system-language first (D-08/D-09). Per-engine remembered voice persists in app_settings under `tts.default_voice.<engine_name>` across engine-switch + restart and never preselects an absent id — resolve_default_voice validates the remembered id against the live list, else engine default (D-03 / Pitfall 5; T-03-11 mitigation). get_engine_voices wrapped in @st.cache_data keyed by engine name so `say -v '?'` is not re-shelled per keystroke (T-03-12). Dismissible native_os download hint via durable `tts.native_hint_dismissed` flag (D-10). Settings treats native_os as a no-model-file engine (skips kokoro/piper model-path validation).
+- [Phase 03]: [Phase 03 plan 04, deviation #1 Rule-1 bug surfaced during human-verify]: An empty filter/search result crashed the picker with KeyError: None (selected voice id resolved to None, then voice_options[None] was indexed). Fixed with a None-safe resolve_selected_voice_id helper + a friendly "no voices match" empty-state message in both pickers + a regression test (commit 7be54ac). D-01 (fresh-config-only default flip, NO migration shim) and D-02 (picker shows only the selected engine's voices) were left UNTOUCHED — the human's "piper shown first" / "Amélie not on piper" reports were these decisions working as designed, not bugs. Full suite 377 passed / 2 skipped (remaining skips = Plan 05 WinRT/SAPI5 boundaries).
 
 ### Pending Todos
 
@@ -121,6 +135,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-01T00:31:03.542Z
-Stopped at: Completed 02-04-PLAN.md (figures/captions/footnotes + corpus completion — CLEAN-01/03/08)
+Last session: 2026-06-15
+Stopped at: Phase 03 plan 03-04 COMPLETE — human-verified all acceptance steps (incl. empty-filter crash fix 7be54ac) and approved; SUMMARY written + STATE finalized. Next: Wave 5 (03-05 WinRT). D-01/D-02 left intact.
 Resume file: None
