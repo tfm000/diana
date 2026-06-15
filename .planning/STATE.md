@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed Phase 04 Plan 06 (FINAL wave) — VOICE-07 in-app Piper uninstall (confirm + freed space + in-use block) + per-item/bulk partial-download cleanup + in-UI Kokoro single-model download via the generic substrate (D-19) + a paginated read-only cross-engine voice table; blocking human-verify APPROVED. Phase 04 COMPLETE (6/6); ALL milestone plans done (19/19, 100%).
-last_updated: "2026-06-15T17:05:00.000Z"
-last_activity: 2026-06-15 -- Completed Phase 04 Plan 06 (uninstall + partial cleanup + Kokoro download + paginated cross-engine table); Phase 04 closed — 19/19 plans complete
+stopped_at: Phase 5 context gathered
+last_updated: "2026-06-15T20:23:57.820Z"
+last_activity: 2026-06-15 -- Phase 05 execution started
 progress:
   total_phases: 7
-  completed_phases: 3
-  total_plans: 19
+  completed_phases: 4
+  total_plans: 26
   completed_plans: 19
-  percent: 100
+  percent: 57
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-29)
 
 **Core value:** Convert documents into listenable audiobooks entirely on-device — so even private or sensitive files can be turned into audio without sending them anywhere.
-**Current focus:** Phase 04 — engine-management-voice-catalog
+**Current focus:** Phase 05 — heavy-opt-in-engines
 
 ## Current Position
 
-Phase: 04 (engine-management-voice-catalog) — COMPLETE (6/6)
-Plan: 6 of 6 (DONE — final wave)
-Status: Phase 04 COMPLETE — all 6 plans done. Wave 6 (04-06) closed the loop: VOICE-07 in-app Piper uninstall (confirm + freed space + in-use block, D-16/D-17), per-item/bulk partial-download cleanup (D-18), and the in-UI Kokoro single-model download routed through the SAME generic disk-check/resumable/md5/atomic substrate (D-19) with a >200MB footprint confirm on the f32 asset (D-04), replacing the wget hint; plus a paginated read-only cross-engine voice table (checkpoint usability fix to 04-05's browser). Blocking human-verify APPROVED. ALL 19 milestone plans complete (100%). Next: Phase 05 (Heavy Opt-In Engines) — flag for /gsd:plan-phase --research-phase (llama-cpp-python wheels, model repo IDs, inference signatures).
-Last activity: 2026-06-15 -- Completed Phase 04 Plan 06 (uninstall + partial cleanup + Kokoro download + paginated cross-engine table); Phase 04 closed — 19/19 plans complete
+Phase: 05 (heavy-opt-in-engines) — EXECUTING
+Plan: 1 of 7
+Status: Executing Phase 05
+Last activity: 2026-06-15 -- Phase 05 execution started
 
 Progress: [██████████] 100% (19/19 plans complete; Phase 04 fully landed — the full in-app loop discover → preview → install → use → relabel → uninstall/clean up runs on the SAME generic substrate that now drives both the Piper per-voice catalog and the Kokoro single-model download)
 
@@ -168,6 +168,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-15T17:05:00.000Z
-Stopped at: Completed Phase 04 Plan 06 (FINAL wave) — Phase 04 CLOSED (6/6; ALL 19 milestone plans done, 100%). VOICE-07 in-app Piper uninstall: install_state.voice_in_use (blocks on a non-terminal job's tts_voice OR the tts.default_voice.<engine> key, D-17; lazy DB import) + install_state.uninstall_piper_voice (model_dir-scoped .onnx/.onnx.json unlink, returns freed bytes, T-04-FILE) — the Voices tab checks voice_in_use FIRST and refuses when blocked, else a confirm shows freed space then deletes + flips the badge (D-16). Partial cleanup (D-18): per-item "Remove partial" (.part unlink + dl_state reset) + bulk "Clean up partial downloads" (clean_partials over model_dir). Kokoro single-model download via the SAME generic substrate (D-19 — boundary PROVEN): kokoro_engine.KOKORO_ASSETS (int8 ~88 MB / fp16 ~169 MB / f32 ~310 MB + voices-v1.0.bin) feeds an engine-level Kokoro row (NOT per-voice) running has_space → threaded download_file (Plan-03 dl_state/@st.fragment) → md5 atomic install, with a D-04 >200MB footprint confirm on f32 (default int8); the wget hint is replaced by an in-app pointer. native_os shows no download/uninstall (OS-owned). 2 checkpoint deviations: (1) Rule-1 — per-item Remove partial was hidden after Cancel (cancelled record resolved action=="resume"→active==True; re-gated on action not in ("downloading","cancelling"), bf53757); (2) user-requested usability fix — the unusable ~184-row 04-05 cross-engine browser replaced with a paginated read-only st.dataframe (full-dataset filtering then 25/50/100 slicing, reset to page 1 on filter/page-size change) + select-to-edit panel + pure paginate() helper, 96e6464. Blocking human-verify APPROVED (cross-engine table + uninstall block/confirm/freed-space + per-item/bulk cleanup + native_os no-control all PASS). Suite 432→461 passed / 1 deselected. Effective files_modified = 3 source (install_state.py + kokoro_engine.py + 5_Settings.py — matches plan) + 4 test files (test_uninstall flipped green + test_uninstall_apptest[10] + test_settings_pagination[8] + test_cross_engine_browser_apptest[9]). AppTest-verified pending a live pass (NOT defects): Cancel-mid-download + Kokoro-download-progress (environment-limited). Next: Phase 05 (Heavy Opt-In Engines) — flag for /gsd:plan-phase --research-phase (llama-cpp-python Metal/CPU wheels, Orpheus/F5-TTS model repo IDs + inference signatures).
-Resume file: None
+Last session: 2026-06-15T18:56:27.250Z
+Stopped at: Phase 5 context gathered
+Resume file: .planning/phases/05-heavy-opt-in-engines/05-CONTEXT.md
+Next action (chosen 2026-06-15): Start Phase 05 (Heavy Opt-In Engines) — `/gsd:discuss-phase 5` to gather vision, then research + plan (roadmap flags this phase for `--research-phase`: llama-cpp-python Metal/CPU wheels, Orpheus/F5-TTS repo IDs + inference signatures, GPU-gate for Fish S2 Pro).
+Carried (do not lose): (1) Phase 03-05 Windows WinRT UAT — BLOCKING, Windows-only, runs after all phases; (2) VOICE-04 manual voice import — non-blocking, NOW Playwright-verifiable; (3) Cancel-mid-download + Kokoro-download-progress — non-blocking AppTest-only, Kokoro download NOW Playwright-verifiable (after removing the installed model).
+Bookkeeping drift to reconcile (use /gsd:health): ROADMAP shows Phase 1 "awaiting verifier" + Phase 3 "3/5 In Progress" though both are implemented (03-04/03-05 have summaries; PROJECT.md lists their reqs validated); STATE frontmatter `percent:100` = 19/19 plans CREATED so far (Phases 1–4), NOT the 7-phase milestone — milestone is 4/7 phases done. Neither loose end blocks Phase 5 (depends on Phase 4, which is verified 6/6).
+UI policy now active: Playwright pre-check (drive flow → screenshot → inspect → fix) runs before ANY human-verify checkpoint; user verifies last; audio playback is the one thing still verified by ear.

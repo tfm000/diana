@@ -185,7 +185,36 @@ Plans:
   3. Fish Audio S2 Pro is hidden unless a capable GPU is detected; when shown, it is opt-in and presents its non-commercial license disclosure before download
   4. Choosing a heavy engine without its model installed fails fast with an actionable prompt rather than erroring mid-job
 
-**Plans**: TBD
+**Plans**: 7 plans
+Plans:
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — Wave-0 Nyquist test scaffold (conftest + 10 RED/skipif test files)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 05-02-PLAN.md — Cheap no-heavy-import foundation: paths + GPU probe (D-09) + install-state probes + registry helpers; streamlit>=1.40 bump; D-10 wording reconciliation
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 05-03-PLAN.md — heavy_install.py bundled-uv two-phase provisioner (D-05/06/07) + accept-once license helpers (D-08) + stack re-verification (A1-A8)
+
+**Wave 4** *(blocked on Wave 3 — shared registry/UI files)*
+
+- [ ] 05-04-PLAN.md — Orpheus vertical slice (HEAVY-01): engine + worker + Settings install row + Upload badge + D-16 fail-fast
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [ ] 05-05-PLAN.md — F5-TTS slice + bundled default voice (D-15) + accept-once NC-license gate (D-08) (HEAVY-02)
+
+**Wave 6** *(blocked on Wave 5)*
+
+- [ ] 05-06-PLAN.md — Reusable engine-agnostic Custom Voices section: capture/upload + clip validation + cloning (HEAVY-02, D-11..D-14)
+
+**Wave 7** *(blocked on Wave 6)*
+
+- [ ] 05-07-PLAN.md — Fish S2 Pro slice (HEAVY-03): shown-but-disabled GPU gate (D-10) + accept-once NC-license (D-08)
+
 **Research note**: Heavy-engine Python APIs are fast-moving (MEDIUM confidence) — flag this phase for `/gsd:plan-phase --research-phase` to re-verify llama-cpp-python Metal/CPU wheel availability, model repo IDs/revisions, and inference signatures for Orpheus and F5-TTS at plan time.
 
 ### Phase 6: Packaging & First-Class Windows
@@ -230,6 +259,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
 | 3. Native OS TTS (New Default) | 3/5 | In Progress|  |
 | 4. Engine Management & Voice Catalog | 6/6 | Complete   | 2026-06-15 |
-| 5. Heavy Opt-In Engines | 0/TBD | Not started | - |
+| 5. Heavy Opt-In Engines | 0/7 | Planned | - |
 | 6. Packaging & First-Class Windows | 0/TBD | Not started | - |
 | 7. Production Hardening | 0/TBD | Not started | - |
