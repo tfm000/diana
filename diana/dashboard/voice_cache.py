@@ -22,7 +22,7 @@ kept ``st.*``-free (T-04-SRC / ENGINE-01).
 import streamlit as st
 
 from diana.config import get_config
-from diana.tts.registry import get_engine_voices
+from diana.tts.registry import all_engine_voices, get_engine_voices
 
 
 @st.cache_data(show_spinner=False)
@@ -37,6 +37,21 @@ def cached_voices(engine_name: str):
     return get_engine_voices(engine_name, config=get_config())
 
 
+@st.cache_data(show_spinner=False)
+def cached_all_engine_voices():
+    """Enumerate EVERY engine's voices as ``(engine, voice)`` pairs, cached (D-10).
+
+    The cross-engine browser's source (Settings ▸ Voices). Wraps
+    ``registry.all_engine_voices`` so the costly multi-engine enumeration (native_os
+    shells ``say -v '?'``; piper globs the model dir) runs once per rerun-cycle rather
+    than on every keystroke in the browser's filters/search. config is read fresh
+    inside (not a cache arg). Cleared by ``clear_voice_cache`` alongside the per-engine
+    cache, so a just-installed/imported voice OR a saved label edit shows in the
+    browser without an app restart (the 04-03 install->use pattern, extended to labels).
+    """
+    return all_engine_voices(get_config())
+
+
 def clear_voice_cache() -> None:
     """Drop the cached voice enumeration so a just-installed voice appears at once.
 
@@ -44,6 +59,10 @@ def clear_voice_cache() -> None:
     uninstall path, on uninstall completion) from the SCRIPT thread. Clears this one
     shared ``cached_voices`` entry so the next rerun re-enumerates from disk and the
     new voice shows up in both the Upload and Settings Default-Voice pickers without
-    an app restart. Cheap and idempotent — safe to call once per completed install.
+    an app restart. Also clears the cross-engine ``cached_all_engine_voices`` so the
+    Voices-tab browser reflects a just-installed/imported voice OR a saved per-voice
+    label edit (D-10/D-14) without a restart. Cheap and idempotent — safe to call once
+    per completed install or label save.
     """
     cached_voices.clear()
+    cached_all_engine_voices.clear()

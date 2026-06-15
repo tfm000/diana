@@ -12,6 +12,7 @@ from diana.dashboard.voice_cache import cached_voices as _cached_voices
 from diana.database import create_job, get_setting, init_db, set_setting
 from diana.llm.registry import get_llm_config
 from diana.models import Job, JobStatus, parse_page_range
+from diana.tts import install_state
 from diana.tts.native_os_engine import (
     filter_voices,
     order_by_quality,
@@ -37,6 +38,48 @@ def _system_language_first(voices, system_lang):
     in_lang = [v for v in voices if (v.language or "").strip().lower() == sys_lang]
     others = [v for v in voices if (v.language or "").strip().lower() != sys_lang]
     return order_by_quality(in_lang) + order_by_quality(others)
+
+
+def _engine_readiness(engine_name: str) -> tuple[bool, str]:
+    """Cheap (no heavy import) readiness + footprint note for an engine (ENGINE-03/D-11).
+
+    Returns ``(ready, note)`` for the badge below the Upload engine dropdown:
+      - native_os: always ready — OS-provided voices, nothing to download (NATIVE-04).
+      - piper: ready if ANY Piper voice is already installed on disk; otherwise a
+        "~X MB, downloads on first use" estimate from the curated catalog's smallest
+        voice (so the number reflects a real first install, not a guess).
+      - kokoro: ready if the model + voices bin are present, else its ~download note.
+
+    Detection is the ``install_state`` filesystem probe ONLY — no onnxruntime/piper/
+    kokoro import on this render path (ENGINE-01 / threat T-04-NOIMPORT).
+    """
+    if engine_name == "native_os":
+        return True, "Ready — uses your operating system's built-in voices (no download)."
+    if engine_name == "piper":
+        if install_state.list_installed_piper_voice_ids():
+            return True, "Ready — at least one Piper voice is installed."
+        # Smallest curated voice ~ the minimum first-use download (cheap, offline).
+        try:
+            from diana.tts import catalog
+            sizes = [
+                catalog.voice_footprint_bytes(e)
+                for e in catalog._load_bundled_raw().values()
+            ]
+            sizes = [s for s in sizes if s]
+            est = min(sizes) / 1e6 if sizes else 0
+        except Exception:  # noqa: BLE001 — a missing catalog never breaks the badge
+            est = 0
+        note = (
+            f"~{est:.0f} MB+, downloads on first use — install voices in Settings ▸ Voices."
+            if est else
+            "Downloads on first use — install voices in Settings ▸ Voices."
+        )
+        return False, note
+    if engine_name == "kokoro":
+        if install_state.kokoro_model_installed():
+            return True, "Ready — the Kokoro model is installed."
+        return False, "~80 MB+, the Kokoro model downloads on first use."
+    return False, ""
 
 
 def _engine_default_voice(engine_name: str, config_default: str) -> str:
@@ -93,6 +136,15 @@ with col1:
         logger.warning("Saved TTS engine %r no longer available; falling back to kokoro", saved)
         saved = resolve_engine_name(saved)
     engine_name = st.selectbox("Engine", engines, index=engines.index(saved))
+
+    # ENGINE-03 / D-11: install-state + footprint readiness badge below the engine
+    # select (st.selectbox can't render rich per-option badges). Cheap detection via
+    # the install_state filesystem probe — NO heavy SDK import here (ENGINE-01).
+    _ready, _ready_note = _engine_readiness(engine_name)
+    if _ready:
+        st.success(_ready_note, icon="✅")
+    else:
+        st.caption(_ready_note)
 
 with col2:
     all_voices = _cached_voices(engine_name)

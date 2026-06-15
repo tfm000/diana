@@ -10,6 +10,7 @@ import streamlit as st
 from diana import paths
 from diana.config import get_config, save_config
 from diana.dashboard.sidebar import get_icon_image, setup_sidebar
+from diana.dashboard.voice_cache import cached_all_engine_voices
 from diana.dashboard.voice_cache import cached_voices as _cached_voices
 from diana.dashboard.voice_cache import clear_voice_cache
 from diana.database import get_setting, set_setting
@@ -24,6 +25,12 @@ from diana.tts.registry import (
     create_engine,
     list_engines,
     resolve_default_voice,
+)
+from diana.tts.voice_labels import (
+    apply_overrides,
+    get_label_overrides,
+    search_by_tag,
+    set_label_overrides,
 )
 from diana.utils import detect_device_theme
 
@@ -561,6 +568,157 @@ def _render_voice_row(voice, entry: dict, speed: float) -> None:
                             )
 
 
+def _cross_engine_badge(engine: str, voice) -> None:
+    """Render the install-state/footprint badge for one cross-engine browser row (D-11).
+
+    Cheap detection only (``install_state`` filesystem probe — NO engine SDK import,
+    ENGINE-01): native_os voices are OS-provided so they are always "Ready" (and are
+    browse/preview/label-only — nothing to download or uninstall); a Piper voice shows
+    its on-disk footprint when installed, else the manifest estimate with a "downloads
+    on first use" note; Kokoro is one model with baked-in voices (D-19), so every
+    Kokoro voice reflects the single engine-level "model installed?" probe.
+    """
+    if engine == "native_os":
+        st.caption("OS voice · always Ready · browse / preview / label only")
+        return
+    if engine == "piper":
+        if install_state.piper_voice_installed(voice.id):
+            mb = install_state.piper_footprint_bytes(voice.id) / 1e6
+            st.success(f"Ready · {mb:.1f} MB on disk", icon="✅")
+        else:
+            est = catalog.voice_footprint_bytes(_catalog_raw_entries().get(voice.id, {}))
+            if est:
+                st.caption(f"~{est / 1e6:.1f} MB, downloads on first use")
+            else:
+                st.caption("Not installed — install it from the Piper catalog below")
+        return
+    if engine == "kokoro":
+        if install_state.kokoro_model_installed():
+            st.success("Ready · Kokoro model installed", icon="✅")
+        else:
+            st.caption("Kokoro model not installed — downloads on first use")
+        return
+    st.caption("")  # unknown engine — no badge
+
+
+def _parse_tags(raw: str) -> list[str]:
+    """Split a comma-separated tags input into a clean, de-duplicated list (D-14).
+
+    Trims whitespace, drops empties, and de-dupes while preserving order. Plain text
+    only — these feed the substring tag search, never a regex (T-04-REDOS).
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for part in (raw or "").split(","):
+        tag = part.strip()
+        if tag and tag not in seen:
+            seen.add(tag)
+            out.append(tag)
+    return out
+
+
+def _render_label_editor(engine: str, base_voice, merged_voice) -> None:
+    """Per-voice label/tag editor (D-14/D-15), inside an expander on a browser row.
+
+    Pre-fills from the CURRENTLY MERGED voice (so an existing override is shown), lets
+    the user override display name / language / quality tier / gender and edit a
+    comma-separated custom-tags list, and on Save writes the JSON-valued app_settings
+    key via ``set_label_overrides`` — only when something actually changed (mirrors the
+    write-only-on-change durable-pref idiom). Works for ANY engine's voice because it
+    operates on the ``(engine, voice.id)`` pair from the cross-engine browser (D-15).
+    After a save it clears the shared voice cache and reruns so the new attributes
+    immediately drive the filters/search here AND refresh the other pickers (no restart).
+    A "Reset to defaults" action removes the override entirely. The original engine
+    label is shown as a caption so the user can see what they are overriding.
+    """
+    existing = get_label_overrides(config.storage.database_path, engine, base_voice.id)
+    with st.expander("Edit labels & tags"):
+        st.caption(
+            f"Original: **{base_voice.name}** · {base_voice.language} · "
+            f"{base_voice.tier} · {base_voice.gender}"
+        )
+        _kid = f"{engine}:{base_voice.id}"
+        new_name = st.text_input(
+            "Display name", value=merged_voice.name, key=f"lbl_name_{_kid}"
+        )
+        c1, c2 = st.columns(2)
+        with c1:
+            new_lang = st.text_input(
+                "Language", value=merged_voice.language,
+                key=f"lbl_lang_{_kid}",
+                help="e.g. en-us, fr-fr — drives the Language filter.",
+            )
+            new_tier = st.text_input(
+                "Quality tier", value=merged_voice.tier, key=f"lbl_tier_{_kid}",
+                help="e.g. enhanced, standard, compact — drives the Quality filter.",
+            )
+        with c2:
+            new_gender = st.text_input(
+                "Gender", value=merged_voice.gender, key=f"lbl_gender_{_kid}"
+            )
+            new_tags_raw = st.text_input(
+                "Custom tags (comma-separated)",
+                value=", ".join(merged_voice.tags),
+                key=f"lbl_tags_{_kid}",
+                help="Free-text tags — searchable in the box above (e.g. audiobook, calm).",
+            )
+
+        _save_col, _reset_col = st.columns(2)
+        with _save_col:
+            if st.button("Save labels", key=f"lbl_save_{_kid}", type="primary"):
+                overrides: dict = {}
+                # Persist a field override only when it differs from the engine's
+                # ORIGINAL value — so clearing a field back to the original removes it.
+                if new_name.strip() and new_name.strip() != base_voice.name:
+                    overrides["name"] = new_name.strip()
+                if new_lang.strip() and new_lang.strip().lower() != (base_voice.language or "").lower():
+                    overrides["language"] = new_lang.strip().lower()
+                if new_tier.strip() and new_tier.strip().lower() != (base_voice.tier or "").lower():
+                    overrides["tier"] = new_tier.strip().lower()
+                if new_gender.strip() and new_gender.strip().lower() != (base_voice.gender or "").lower():
+                    overrides["gender"] = new_gender.strip()
+                tags = _parse_tags(new_tags_raw)
+                if tags:
+                    overrides["tags"] = tags
+                if overrides != existing:
+                    set_label_overrides(
+                        config.storage.database_path, engine, base_voice.id, overrides
+                    )
+                    clear_voice_cache()  # new labels feed the filters without a restart
+                    st.success("Labels saved.")
+                    st.rerun()
+                else:
+                    st.caption("No changes to save.")
+        with _reset_col:
+            if existing and st.button("Reset to defaults", key=f"lbl_reset_{_kid}"):
+                set_label_overrides(
+                    config.storage.database_path, engine, base_voice.id, {}
+                )
+                clear_voice_cache()
+                st.success("Reset to the engine's original labels.")
+                st.rerun()
+
+
+def _render_cross_engine_row(engine: str, base_voice, merged_voice) -> None:
+    """One cross-engine browser row: engine + (overridden) attributes + badge + editor.
+
+    ``merged_voice`` is the override-applied voice (so the displayed attributes, tags,
+    and badge reflect the user's custom labels); ``base_voice`` is the un-merged
+    original passed to the editor so it can show what is being overridden and detect
+    real changes. The label editor is nested per row (D-14/D-15). Mirrors the visual
+    shape of ``_render_voice_row`` (a bordered container) for consistency.
+    """
+    with st.container(border=True):
+        tag_suffix = f" · 🏷 {', '.join(merged_voice.tags)}" if merged_voice.tags else ""
+        st.markdown(
+            f"**{merged_voice.name}**  \n`{engine}` · `{merged_voice.id}` · "
+            f"{merged_voice.language} · {merged_voice.tier} · "
+            f"{merged_voice.gender}{tag_suffix}"
+        )
+        _cross_engine_badge(engine, merged_voice)
+        _render_label_editor(engine, base_voice, merged_voice)
+
+
 def _engine_default_voice(engine_name: str, config_default: str) -> str:
     """Cheap per-engine default voice id without loading heavy engine models.
 
@@ -766,6 +924,106 @@ with tab_general:
 # ---------------------------------------------------------------------------
 with tab_voices:
     st.subheader("Voices")
+
+    # -----------------------------------------------------------------------
+    # Cross-engine browser + per-voice label editor (D-10/D-14/D-15). Lists
+    # EVERY engine's voices together (native_os + Kokoro + Piper) with their
+    # custom overrides merged in, an engine filter alongside the reused Phase-3
+    # language/quality filters + name/tag search, and a per-voice editor that
+    # overrides name/language/tier/gender and adds free-text tags — for ANY
+    # engine's voice (D-15). Custom labels/tags immediately drive the filters.
+    # -----------------------------------------------------------------------
+    st.markdown("#### Browse all voices")
+    st.caption(
+        "Every engine's voices in one place. Filter by engine, language or quality, "
+        "search by name or your own tags, and edit any voice's labels — the changes "
+        "drive the filters everywhere and persist across restarts."
+    )
+
+    # Cached cross-engine enumeration (cleared on install/import/label-save).
+    _engine_pairs = cached_all_engine_voices()
+
+    # Merge each voice's stored overrides BEFORE filtering/display so a relabeled
+    # language/tier filters correctly and a custom tag is searchable (D-14). Keep the
+    # un-merged base alongside the merged voice for the editor (change detection).
+    _db_path = config.storage.database_path
+    _merged_rows = [
+        (
+            _eng,
+            _v,
+            apply_overrides(_v, get_label_overrides(_db_path, _eng, _v.id)),
+        )
+        for _eng, _v in _engine_pairs
+    ]
+
+    # Engine filter (D-10) alongside the reused Phase-3 language/quality + search.
+    _xe_engine_col, _xe_lang_col, _xe_tier_col = st.columns(3)
+    with _xe_engine_col:
+        _engine_opts = ["All engines"] + list_engines()
+        _xe_engine = st.selectbox("Engine", _engine_opts, index=0, key="xe_engine")
+    with _xe_lang_col:
+        _xe_langs = sorted({
+            (m.language or "").strip().lower() for _, _, m in _merged_rows if m.language
+        })
+        _xe_lang_choice = st.selectbox(
+            "Language", ["All languages"] + _xe_langs, index=0, key="xe_lang"
+        )
+        _xe_sel_language = None if _xe_lang_choice == "All languages" else _xe_lang_choice
+    with _xe_tier_col:
+        _xe_tiers = sorted({
+            (m.tier or "").strip().lower() for _, _, m in _merged_rows if m.tier
+        })
+        _xe_tier_choice = st.selectbox(
+            "Quality", ["All qualities"] + _xe_tiers, index=0, key="xe_tier"
+        )
+        _xe_sel_tier = None if _xe_tier_choice == "All qualities" else _xe_tier_choice
+
+    _xe_query = st.text_input(
+        "Search voices (name or tag)", value="", placeholder="Type part of a name or tag…",
+        key="xe_search",
+    )
+
+    # Apply the engine filter first, then the reused Phase-3 filter_voices over the
+    # MERGED voices (so overridden language/tier/name match). The search box ORs a
+    # name match (filter_voices query) with a plain-substring tag match (search_by_tag)
+    # — both accent-folded, never a compiled user regex (T-04-REDOS).
+    _xe_rows = [
+        (e, b, m) for (e, b, m) in _merged_rows
+        if (_xe_engine == "All engines" or e == _xe_engine)
+    ]
+    _merged_only = [m for _, _, m in _xe_rows]
+    _name_hits = filter_voices(
+        _merged_only, language=_xe_sel_language, tier=_xe_sel_tier,
+        query=_xe_query or None,
+    )
+    _name_hit_ids = {id(v) for v in _name_hits}
+    if _xe_query.strip():
+        # Also surface voices whose CUSTOM TAGS match the query (name search alone
+        # would miss a tag-only hit). Tag matches still respect the engine/lang/tier
+        # filters applied above.
+        _tag_prefiltered = filter_voices(
+            _merged_only, language=_xe_sel_language, tier=_xe_sel_tier,
+        )
+        _tag_hits = search_by_tag(_tag_prefiltered, _xe_query)
+        _name_hit_ids |= {id(v) for v in _tag_hits}
+    _visible = [(e, b, m) for (e, b, m) in _xe_rows if id(m) in _name_hit_ids]
+    # Order best-quality-first within the visible set (D-09), stable.
+    _visible_ordered = order_by_quality([m for _, _, m in _visible])
+    _ordered_ids = [id(m) for m in _visible_ordered]
+    _visible.sort(key=lambda row: _ordered_ids.index(id(row[2])))
+
+    if not _visible:
+        st.info(
+            "No voices match your filters. Clear the engine/language/quality filter "
+            "or the search box to see every voice."
+        )
+    else:
+        st.caption(f"{len(_visible)} voice{'s' if len(_visible) != 1 else ''} shown.")
+        for _eng, _base_v, _merged_v in _visible:
+            _render_cross_engine_row(_eng, _base_v, _merged_v)
+
+    st.divider()
+    st.markdown("#### Install Piper voices")
     st.caption(
         "Browse and install Piper voices on demand — no terminal needed. Voices "
         "download into your per-user cache and become selectable for a job. Preview "
