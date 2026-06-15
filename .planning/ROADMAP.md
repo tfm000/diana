@@ -189,11 +189,11 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Wave-0 Nyquist test scaffold (conftest + 10 RED/skipif test files)
+- [x] 05-01-PLAN.md — Wave-0 Nyquist test scaffold (conftest + 10 RED/skipif test files)
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 05-02-PLAN.md — Cheap no-heavy-import foundation: paths + GPU probe (D-09) + install-state probes + registry helpers; streamlit>=1.40 bump; D-10 wording reconciliation
+- [x] 05-02-PLAN.md — Cheap no-heavy-import foundation: paths + GPU probe (D-09) + install-state probes + registry helpers; streamlit>=1.40 bump; D-10 wording reconciliation
 
 **Wave 3** *(blocked on Wave 2)*
 
@@ -259,6 +259,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
 | 3. Native OS TTS (New Default) | 3/5 | In Progress|  |
 | 4. Engine Management & Voice Catalog | 6/6 | Complete   | 2026-06-15 |
-| 5. Heavy Opt-In Engines | 0/7 | Planned | - |
+| 5. Heavy Opt-In Engines | 2/7 | In Progress|  |
 | 6. Packaging & First-Class Windows | 0/TBD | Not started | - |
 | 7. Production Hardening | 0/TBD | Not started | - |
