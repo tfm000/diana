@@ -1,0 +1,198 @@
+"""Wave-0 RED/skip scaffold for the reusable Custom Voices layer (Plan 05, HEAVY-02).
+
+D-11..D-15 / V12: F5 voice cloning needs user reference clips. ``custom_voices``
+validates an uploaded/recorded clip + transcript (never crashing — the Phase-4
+import-rejection pattern), lands the file under a per-user dir with the
+``safe_voice_dest`` path-safety guard (basename + ext allow-list + containment), and
+round-trips named-voice metadata through ``app_settings``. These tests assert:
+
+  - ``validate_clip(audio_path, transcript)`` returns a ``(ok, msg)`` tuple and NEVER
+    raises — accepting a ~2-12 s clip with a non-empty transcript (incl. 16 kHz,
+    Pitfall 5/7), rejecting a too-short clip, an empty/whitespace transcript, and a
+    disallowed format;
+  - ``safe_custom_voice_dest(name)`` strips path components, enforces a
+    ``.wav``/``.mp3``/``.txt`` allow-list, and raises ``ValueError`` on a traversal /
+    disallowed extension (mirrors ``catalog.safe_voice_dest``);
+  - ``save_custom_voice`` / ``list_custom_voices`` / ``remove_custom_voice`` round-trip
+    over a temp DB, and a malformed stored value degrades to an empty list rather than
+    raising (T-04-LBLJSON analog).
+
+Symbols land in Wave 5 (module home ``diana.tts.custom_voices``); collection stays
+GREEN until then.
+"""
+
+import contextlib
+import sqlite3
+
+import pytest
+
+from diana.database import init_db
+
+# --- Guarded probes: the Custom Voices layer lands in Wave 5 ----------------
+_validate_clip = _safe_dest = None
+_save_voice = _list_voices = _remove_voice = None
+with contextlib.suppress(ImportError):
+    import diana.tts.custom_voices as _cv
+
+    _validate_clip = getattr(_cv, "validate_clip", None)
+    _safe_dest = getattr(_cv, "safe_custom_voice_dest", None)
+    _save_voice = getattr(_cv, "save_custom_voice", None)
+    _list_voices = getattr(_cv, "list_custom_voices", None)
+    _remove_voice = getattr(_cv, "remove_custom_voice", None)
+
+_VALIDATE_AVAILABLE = _validate_clip is not None
+_DEST_AVAILABLE = _safe_dest is not None
+_CRUD_AVAILABLE = all(x is not None for x in (_save_voice, _list_voices, _remove_voice))
+_LIST_AVAILABLE = _list_voices is not None
+
+
+def _ids_of(listed):
+    """Best-effort voice-id extraction across list_custom_voices' possible shapes."""
+    out = []
+    for item in listed:
+        if isinstance(item, str):
+            out.append(item)
+        elif isinstance(item, dict):
+            out.append(item.get("id") or item.get("voice_id") or item.get("name"))
+        else:
+            out.append(getattr(item, "id", None) or getattr(item, "name", None))
+    return out
+
+
+def _save_one(save_fn, db, engine, voice_id, wav, txt):
+    """Call save_custom_voice across its documented signature shapes (db, engine first)."""
+    meta = {"id": voice_id, "name": "My Voice",
+            "ref_file": str(wav), "ref_text": txt.read_text()}
+    attempts = (
+        lambda: save_fn(db, engine, voice_id, meta),                      # (db,engine,id,meta)
+        lambda: save_fn(db, engine, meta),                                # (db,engine,meta)
+        lambda: save_fn(db, engine, voice_id, str(wav), txt.read_text()),  # (db,engine,id,ref,text)
+        lambda: save_fn(db, engine, "My Voice", str(wav), txt.read_text()),
+    )
+    last = None
+    for attempt in attempts:
+        try:
+            return attempt()
+        except TypeError as e:  # signature mismatch — try the next documented shape
+            last = e
+    raise last
+
+
+# --- D-13 / Pitfall 5: accept a good 16 kHz clip ----------------------------
+@pytest.mark.skipif(not _VALIDATE_AVAILABLE, reason="validate_clip lands in Wave 5")
+def test_validate_clip_accepts_good_16khz_clip(temp_clip):
+    """A ~3 s 16 kHz clip + non-empty transcript validates True (sub-24 kHz OK)."""
+    wav, txt = temp_clip(seconds=3.0, samplerate=16000)
+    ok, msg = _validate_clip(str(wav), txt.read_text())
+    assert ok is True
+    assert isinstance(msg, str)
+
+
+# --- D-13: reject an empty/whitespace transcript ----------------------------
+@pytest.mark.skipif(not _VALIDATE_AVAILABLE, reason="validate_clip lands in Wave 5")
+def test_validate_clip_rejects_empty_transcript(temp_clip):
+    """A blank transcript is rejected with a message (D-12 transcript is required)."""
+    wav, _txt = temp_clip(seconds=3.0)
+    ok, msg = _validate_clip(str(wav), "   ")
+    assert ok is False
+    assert msg
+
+
+# --- D-13 / Pitfall 7: reject a too-short clip ------------------------------
+@pytest.mark.skipif(not _VALIDATE_AVAILABLE, reason="validate_clip lands in Wave 5")
+def test_validate_clip_rejects_too_short(temp_clip):
+    """A sub-second clip is below the clone floor and rejected (never crashes)."""
+    wav, txt = temp_clip(seconds=0.4)
+    ok, msg = _validate_clip(str(wav), txt.read_text())
+    assert ok is False
+    assert msg
+
+
+# --- D-13: a disallowed format is rejected and NEVER raises -----------------
+@pytest.mark.skipif(not _VALIDATE_AVAILABLE, reason="validate_clip lands in Wave 5")
+def test_validate_clip_disallowed_format_never_raises(tmp_path):
+    """Junk/unsupported audio -> (False, msg), never an exception (import-reject pattern)."""
+    junk = tmp_path / "clip.bin"
+    junk.write_bytes(b"not audio at all")
+    try:
+        ok, msg = _validate_clip(str(junk), "a perfectly valid transcript")
+    except Exception as e:  # noqa: BLE001 - the contract is "never raises"
+        pytest.fail(f"validate_clip must never raise, got {e!r}")
+    assert ok is False
+    assert msg
+
+
+# --- V12: safe_custom_voice_dest contains the leaf under the per-user dir ----
+@pytest.mark.skipif(not _DEST_AVAILABLE, reason="safe_custom_voice_dest lands in Wave 5")
+def test_safe_custom_voice_dest_contains_under_dir(tmp_data_paths):
+    """A clean name resolves to a Path inside custom_voices_dir()."""
+    dest = _safe_dest("my voice.wav")
+    root = tmp_data_paths["custom_voices_dir"]
+    assert dest.name == "my voice.wav"
+    assert str(dest.resolve()).startswith(str(root.resolve()))
+
+
+# --- V12: path components are stripped (basename) ---------------------------
+@pytest.mark.skipif(not _DEST_AVAILABLE, reason="safe_custom_voice_dest lands in Wave 5")
+def test_safe_custom_voice_dest_strips_path_components(tmp_data_paths):
+    """An absolute/traversal path with an allowed ext is reduced to its leaf, contained."""
+    dest = _safe_dest("/etc/cron.d/evil.wav")
+    root = tmp_data_paths["custom_voices_dir"]
+    assert dest.name == "evil.wav"
+    assert str(dest.resolve()).startswith(str(root.resolve()))
+
+
+# --- V12: a disallowed extension raises ValueError --------------------------
+@pytest.mark.skipif(not _DEST_AVAILABLE, reason="safe_custom_voice_dest lands in Wave 5")
+def test_safe_custom_voice_dest_rejects_bad_extension(tmp_data_paths):
+    """Only .wav/.mp3/.txt are accepted; anything else raises ValueError."""
+    for bad in ("evil.sh", "payload.exe", "script.py"):
+        with pytest.raises(ValueError):
+            _safe_dest(bad)
+
+
+# --- V12 / T-05-PATH: a traversal attempt raises ValueError -----------------
+@pytest.mark.skipif(not _DEST_AVAILABLE, reason="safe_custom_voice_dest lands in Wave 5")
+def test_safe_custom_voice_dest_rejects_traversal(tmp_data_paths):
+    """A ../ traversal (whose leaf has no allowed ext) is rejected with ValueError."""
+    with pytest.raises(ValueError):
+        _safe_dest("../../etc/passwd")
+
+
+# --- D-14: named-voice metadata round-trips through app_settings ------------
+@pytest.mark.skipif(not _CRUD_AVAILABLE, reason="custom-voice CRUD lands in Wave 5")
+def test_custom_voice_metadata_roundtrip(tmp_path, tmp_data_paths, temp_clip):
+    """save -> list shows it; remove -> list no longer shows it (D-14 persistent library)."""
+    db = str(tmp_path / "diana.db")
+    init_db(db)
+    wav, txt = temp_clip(seconds=3.0)
+
+    saved_id = _save_one(_save_voice, db, "f5", "myvoice", wav, txt)
+    listed = _list_voices(db, "f5")
+    assert len(listed) >= 1, "a saved custom voice must appear in list_custom_voices"
+
+    target = saved_id if (saved_id and saved_id in _ids_of(listed)) else "myvoice"
+    _remove_voice(db, "f5", target)
+    assert target not in _ids_of(_list_voices(db, "f5"))
+
+
+# --- T-04-LBLJSON: a malformed stored value degrades, never crashes ---------
+@pytest.mark.skipif(not _LIST_AVAILABLE, reason="list_custom_voices lands in Wave 5")
+def test_list_custom_voices_tolerates_malformed_json(tmp_path, tmp_data_paths):
+    """A corrupt app_settings value -> an empty/clean list, never an exception."""
+    db = str(tmp_path / "diana.db")
+    init_db(db)
+    from diana.database import set_setting
+
+    set_setting(db, "voice.custom.f5.x", "{not valid json")
+    # Corrupt every stored value so whatever key the lister reads is malformed.
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE app_settings SET value = ?", ("{still not json",))
+    conn.commit()
+    conn.close()
+
+    try:
+        listed = _list_voices(db, "f5")
+    except Exception as e:  # noqa: BLE001 - the contract is "degrade, never raise"
+        pytest.fail(f"list_custom_voices must tolerate malformed JSON, got {e!r}")
+    assert isinstance(listed, (list, tuple))
