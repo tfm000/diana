@@ -20,8 +20,10 @@ helpers (D-03) — this module does NOT define its own filter functions.
 
 import json
 import logging
+import os
 from functools import lru_cache
 from importlib import resources
+from pathlib import Path
 
 import requests
 
@@ -98,6 +100,92 @@ def voice_footprint_bytes(entry: dict) -> int:
 def download_url(file_path: str) -> str:
     """Build the HF raw-download URL for a manifest ``files`` key (already a path)."""
     return f"{_HF_RESOLVE_PREFIX}{file_path}"
+
+
+def sample_url_for(voice_dir_path: str) -> str:
+    """Build the HF preview-sample URL for a voice (D-12; RESEARCH line 494).
+
+    Every Piper voice ships one preview clip at ``<voice-dir>/samples/speaker_0.mp3``
+    (~84 KB). ``voice_dir_path`` is the voice's repo-relative directory — i.e. the
+    PARENT of a manifest ``files`` key (the ``files`` key carries the full repo path,
+    so ``en/en_US/lessac/medium/en_US-lessac-medium.onnx`` -> the voice dir
+    ``en/en_US/lessac/medium``). For convenience a full ``.onnx``/``.onnx.json`` file
+    path is also accepted and reduced to its parent dir, so callers may pass either.
+    Pure/Streamlit-free.
+    """
+    p = voice_dir_path.strip().strip("/")
+    # Accept either a voice dir or a full file path; reduce a file to its parent dir.
+    if p.endswith(".onnx") or p.endswith(".onnx.json"):
+        p = p.rsplit("/", 1)[0] if "/" in p else ""
+    return f"{_HF_RESOLVE_PREFIX}{p}/samples/speaker_0.mp3"
+
+
+def fetch_sample(voice_dir_path: str, cache_dir: "Path | None" = None) -> Path:
+    """Download + cache a voice's preview clip; return the cached path (D-12).
+
+    Thin wrapper over ``downloader.download_file``: fetches ``speaker_0.mp3`` from
+    ``sample_url_for(voice_dir_path)`` into the per-user sample cache (default
+    ``paths.data_dir()/"samples"``) under a flattened, collision-free filename, and
+    returns the cached path. A repeat call returns the already-cached file WITHOUT a
+    network touch, so re-previews are instant/offline (D-12). ``download_file`` is
+    imported lazily so this catalog module keeps a minimal top-of-file import surface
+    and never pulls the downloader at import time (D-19). No md5 is verified — the
+    sample is non-executable preview audio (T-04-INT: low value); HTTPS + default TLS
+    verify still apply. Raises (propagates ``requests``/``download_file`` errors,
+    e.g. a 404 on a moved voice) so the UI can message Pitfall 6 gracefully.
+    """
+    # Derive the voice dir (strip a file path to its parent) so the cache key is the
+    # voice dir, shared by every file of the pair.
+    voice_dir = voice_dir_path.strip().strip("/")
+    if voice_dir.endswith(".onnx") or voice_dir.endswith(".onnx.json"):
+        voice_dir = voice_dir.rsplit("/", 1)[0] if "/" in voice_dir else ""
+
+    if cache_dir is None:
+        from diana import paths
+        cache_dir = paths.data_dir() / "samples"
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Flatten the voice dir into a single safe filename (no nested dirs in the cache).
+    cached = cache_dir / f"{voice_dir.replace('/', '_')}_speaker_0.mp3"
+    if cached.exists():
+        return cached  # already cached — offline/instant re-preview (D-12)
+
+    from diana.downloads.downloader import download_file
+    download_file(sample_url_for(voice_dir), cached)
+    return cached
+
+
+def safe_voice_dest(uploaded_name: str) -> Path:
+    """Resolve a SAFE on-disk destination for a manually imported voice file.
+
+    HARD-03 / VOICE-04 / T-04-PATH: the manual-import path accepts an untrusted
+    filename (from ``file_uploader`` or a user-typed path). This reuses the exact
+    guard already proven in ``1_Upload.py:268-284`` (RESEARCH Pattern 5):
+
+      1. ``os.path.basename`` strips any directory components (neutralizing ``../``
+         and absolute paths — only the leaf name survives).
+      2. An extension allow-list rejects anything not ending in ``.onnx`` or
+         ``.onnx.json`` (no ``.sh``/``.txt``/etc. ever lands).
+      3. A resolved-prefix containment check confirms the destination still resolves
+         INSIDE ``paths.model_dir()`` — defence-in-depth against any residual
+         traversal/zip-slip after the basename strip.
+
+    Returns the safe ``Path`` (under ``model_dir()``) where the file may be written;
+    raises ``ValueError`` on a disallowed extension or a containment-escape. Pure
+    apart from reading ``paths.model_dir()`` (lazy import keeps the module
+    import-light and lets tests monkeypatch the path). Streamlit-free.
+    """
+    from diana import paths
+
+    base = os.path.basename(uploaded_name)  # strip any path components (../, absolute)
+    if not (base.endswith(".onnx") or base.endswith(".onnx.json")):
+        raise ValueError("Only .onnx and .onnx.json files are accepted.")
+    dest_dir = paths.model_dir()
+    dest = dest_dir / base
+    if not str(dest.resolve()).startswith(str(dest_dir.resolve())):
+        raise ValueError("Invalid filename.")  # traversal/zip-slip blocked
+    return dest
 
 
 def load_bundled_manifest() -> list[TTSVoice]:
