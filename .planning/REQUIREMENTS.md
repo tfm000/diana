@@ -44,14 +44,14 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### Engine & Model Management
 
-- [ ] **ENGINE-01**: Engine availability/capability is detected cheaply, without importing heavy dependencies
-- [ ] **ENGINE-02**: Models/weights download on demand with visible byte progress, resumability, and a disk-space pre-check
+- [x] **ENGINE-01**: Engine availability/capability is detected cheaply, without importing heavy dependencies
+- [x] **ENGINE-02**: Models/weights download on demand with visible byte progress, resumability, and a disk-space pre-check
 - [ ] **ENGINE-03**: The engine picker shows install state and download-footprint badges (e.g. "Ready" / "~2.4 GB, downloads on first use")
 - [ ] **ENGINE-04**: Downloads land in the per-user cache and are triggered only from the UI, never inside the worker/job
 
 ### Voice Management
 
-- [ ] **VOICE-01**: User can browse a Piper voice catalog (from the voices manifest) in-app
+- [x] **VOICE-01**: User can browse a Piper voice catalog (from the voices manifest) in-app
 - [ ] **VOICE-02**: User can download and install catalog voices without using a terminal
 - [ ] **VOICE-03**: User can preview a voice (pre-recorded sample if not downloaded; live synthesis if installed)
 - [ ] **VOICE-04**: User can manually import a downloaded Piper voice (`.onnx` + `.onnx.json`) via the UI
@@ -130,11 +130,11 @@ Each v1 requirement maps to exactly one phase.
 | NATIVE-03 | Phase 3 | Complete |
 | NATIVE-04 | Phase 3 | Complete |
 | NATIVE-05 | Phase 3 | Complete |
-| ENGINE-01 | Phase 4 | Pending |
-| ENGINE-02 | Phase 4 | Pending |
+| ENGINE-01 | Phase 4 | Complete |
+| ENGINE-02 | Phase 4 | Complete |
 | ENGINE-03 | Phase 4 | Pending |
 | ENGINE-04 | Phase 4 | Pending |
-| VOICE-01 | Phase 4 | Pending |
+| VOICE-01 | Phase 4 | Complete |
 | VOICE-02 | Phase 4 | Pending |
 | VOICE-03 | Phase 4 | Pending |
 | VOICE-04 | Phase 4 | Pending |

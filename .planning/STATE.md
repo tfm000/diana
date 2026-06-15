@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-01-PLAN.md (Wave-0 validation foundation — 7 skipif scaffolds + voices_manifest.json fixture + network marker + TTSVoice.tags; suite 380 passed / 18 skipped)
-last_updated: "2026-06-15T12:41:54Z"
-last_activity: 2026-06-15 -- Completed Phase 04 Plan 01 (Wave-0 scaffolds + TTSVoice.tags)
+stopped_at: Phase 4 context gathered (Engine Management & Voice Catalog — engine-agnostic management UX + generic download/cache layer proven via Piper+Kokoro; uninstall added)
+last_updated: "2026-06-15T12:55:52.790Z"
+last_activity: 2026-06-15 -- Completed Phase 04 Plan 02 (generic download/cache layer + Piper catalog data layer)
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 19
-  completed_plans: 14
-  percent: 46
+  completed_plans: 15
+  percent: 79
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-29)
 ## Current Position
 
 Phase: 04 (engine-management-voice-catalog) — EXECUTING
-Plan: 2 of 6
-Status: Executing Phase 04 (04-01 complete; Wave 2 next)
-Last activity: 2026-06-15 -- Completed Phase 04 Plan 01 (Wave-0 scaffolds + TTSVoice.tags)
+Plan: 3 of 6
+Status: Executing Phase 04 (04-01 + 04-02 complete; Wave 2 download/catalog substrate landed)
+Last activity: 2026-06-15 -- Completed Phase 04 Plan 02 (generic download/cache layer + Piper catalog data layer)
 
-Progress: [█████░░░░░] 46% (14/19 plans complete; Phase 04 Wave-0 foundation landed)
+Progress: [████████░░] 79% (15/19 plans complete; Phase 04 download/cache + catalog substrate landed)
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Progress: [█████░░░░░] 46% (14/19 plans complete; Phase 04 W
 | Phase 03 P04 | ~9min impl (wall ~25h spanning blocking human-verify) | 2 tasks (1 auto/TDD + 1 blocking checkpoint) | 5 files (4 planned + diana/tts/registry.py; +1 in-plan deviation = empty-filter crash fix 7be54ac) |
 | Phase 03 P05 | ~4min impl | 2 of 3 tasks (2 auto/TDD; Task 3 blocking Windows UAT DEFERRED, not blocked) | 4 files (3 planned modified + 1 deferred-UAT created; matches files_modified; no scope expansion) |
 | Phase 04 P01 | ~9min | 3 tasks (3 auto; zero deviations) | 10 files (8 created: 7 scaffolds + manifest fixture; 2 modified: base.py + pyproject.toml — matches files_modified) |
+| Phase 04 P04-02 | ~7min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,8 @@ Recent decisions affecting current work:
 - [Phase 03]: [Phase 03 plan 04, deviation #1 Rule-1 bug surfaced during human-verify]: An empty filter/search result crashed the picker with KeyError: None (selected voice id resolved to None, then voice_options[None] was indexed). Fixed with a None-safe resolve_selected_voice_id helper + a friendly "no voices match" empty-state message in both pickers + a regression test (commit 7be54ac). D-01 (fresh-config-only default flip, NO migration shim) and D-02 (picker shows only the selected engine's voices) were left UNTOUCHED — the human's "piper shown first" / "Amélie not on piper" reports were these decisions working as designed, not bugs. Full suite 377 passed / 2 skipped (remaining skips = Plan 05 WinRT/SAPI5 boundaries).
 - [Phase 03]: [Phase 03 plan 05]: Windows WinRT branch of NativeOSEngine implemented (NATIVE-02). Four winrt-* packages (SpeechSynthesis/runtime/Storage.Streams/Foundation >=3.2.1) platform-gated to `; sys_platform == 'win32'` (pyproject) / `"win32"` (requirements), mirroring audioop-lts — the #1 macOS-install constraint HELD + verified (pip --dry-run ignores all four; engine imports with no winrt; no module-top winrt import). _winrt_synth uses bare `await synthesize_text_to_stream_async` (NEVER create_task — PyWinRT _async methods are awaitable but not coroutines) + `bytes(bytearray(buf))` buffer-protocol read (NEVER DataReader, maintainer guidance); _winrt_list_voices maps VoiceInformation→TTSVoice with tier from "OneCore" in id; _winrt_default_voice_id = get_default_voice().id (D-02). D-11 SAPI5-only = is_sapi5_only(voices) @staticmethod predicate (no voice id contains "OneCore") that also sets self._sapi5_only during enumeration. winrt imports lazy inside the win32 branch only. Branch logic mock-tested on macOS (patch.dict(sys.modules,{...}) with async fakes + a real bytearray Buffer so bytes(bytearray(buf)) is the proven path). Full suite 379 passed.
 - [Phase 03]: [Phase 03 plan 05, user-approved deviation]: Task 3 (blocking Windows WinRT UAT) DEFERRED — no Windows box at execution time; user will run it after all other phases complete. Instead of pausing at the checkpoint, a self-contained 03-05-WINDOWS-UAT-DEFERRED.md was written (7-step Windows verification, A1 pinning via dir(SpeechSynthesizer), neural synth + SAPI5 note + zero-download audio + OS default voice, the Task 3 acceptance criteria, the 03-VALIDATION manual-only rows, requirements/decisions, closeout). Assumption A1 (exact PyWinRT snake_case spelling — get_all_voices/get_default_voice/voice setter) remains the single most likely Windows-side fix point. NATIVE-02/03/04/05 Windows surface stays PENDING until that UAT runs; ROADMAP/REQUIREMENTS deliberately NOT modified by this plan.
+- [Phase 04 plan 02]: Generic download substrate (diana/downloads/downloader.py) is import-clean of piper/kokoro/streamlit (D-19) — download_file copies RESEARCH Pattern 1 verbatim (Range -> .part: 206 appends / 200 resets; total from manifest size_bytes/Content-Range, never a zero Content-Length; iter_content 64KB; md5-verify-then-atomic-os.replace, delete-.part-on-mismatch; cancel leaves .part for resume), has_space ancestor-walks a not-yet-created model_dir (D-05), clean_partials(directory=None) defaults to model_dir() for the zero-arg D-18 bulk action.
+- [Phase 04 plan 02]: Piper catalog (diana/tts/catalog.py) = pure parse_manifest + thin load_bundled_manifest (offline, D-02) / refresh_catalog (only network touch; degrades to bundled on failure). Bundled piper_voices_curated.json = 9 best-per-language voices fetched VERBATIM from live manifest (verified size_bytes+md5; upstream commit pinned, Pitfall 6) — no invented digests. install_state cheap filesystem probes (ENGINE-01). download_url named per the binding scaffold (not plan's download_url_for); piper_footprint_bytes=0 when absent. package-data for data/*.json+samples (Phase-6 must verify PyInstaller); addopts '-m not network' excludes the opt-in net smoke.
 
 ### Pending Todos
 
@@ -143,6 +146,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-15T11:39:56.024Z
+Last session: 2026-06-15T12:52:19.632Z
 Stopped at: Phase 4 context gathered (Engine Management & Voice Catalog — engine-agnostic management UX + generic download/cache layer proven via Piper+Kokoro; uninstall added)
-Resume file: .planning/phases/04-engine-management-voice-catalog/04-CONTEXT.md
+Resume file: None

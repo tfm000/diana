@@ -151,7 +151,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 04-02-PLAN.md — Generic download substrate: resumable downloader (.part/md5/atomic) + disk-check + Piper catalog parse/curate + cheap install-state probe + bundled manifest + package-data (ENGINE-01/02, VOICE-01)
+- [x] 04-02-PLAN.md — Generic download substrate: resumable downloader (.part/md5/atomic) + disk-check + Piper catalog parse/curate + cheap install-state probe + bundled manifest + package-data (ENGINE-01/02, VOICE-01)
 
 **Wave 3** *(blocked on Wave 2 — owns 5_Settings.py)*
 
@@ -229,7 +229,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Foundation & Privacy Toggle | 4/4 | In Progress (all plans implemented; awaiting phase verifier / roadmap-update pass) | - |
 | 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
 | 3. Native OS TTS (New Default) | 3/5 | In Progress|  |
-| 4. Engine Management & Voice Catalog | 0/6 | Planned | - |
+| 4. Engine Management & Voice Catalog | 2/6 | In Progress|  |
 | 5. Heavy Opt-In Engines | 0/TBD | Not started | - |
 | 6. Packaging & First-Class Windows | 0/TBD | Not started | - |
 | 7. Production Hardening | 0/TBD | Not started | - |
