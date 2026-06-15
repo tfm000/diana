@@ -143,7 +143,32 @@ Plans:
   5. Building on Phase 3's voice-attribute layer, the user can edit a voice's labels or add custom ones (persisted across restart, UI-only), and browse/select voices across engines in one place
   6. User can uninstall an installed voice from the UI (confirmed, freed space shown; blocked while it is a current per-job choice or per-engine default) and clean up partial/interrupted downloads (per-item and a bulk action)
 
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — Wave-0 test scaffolds (7 files) + voices manifest fixture + network marker + TTSVoice.tags field (Nyquist contract; D-14 substrate)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 04-02-PLAN.md — Generic download substrate: resumable downloader (.part/md5/atomic) + disk-check + Piper catalog parse/curate + cheap install-state probe + bundled manifest + package-data (ENGINE-01/02, VOICE-01)
+
+**Wave 3** *(blocked on Wave 2 — owns 5_Settings.py)*
+
+- [ ] 04-03-PLAN.md — WALKING SLICE: Settings st.tabs + Voices hub; one Piper voice installs end-to-end (badge + disk-check + threaded byte-progress + md5 install + cancel/resume + selectable) (D-09, ENGINE-02/03/04, VOICE-02/05) — *blocking human-verify*
+
+**Wave 4** *(blocked on Wave 3 — same-file 5_Settings.py)*
+
+- [ ] 04-04-PLAN.md — Full catalog browse (curated flat / show-all grouped + reused filters) + preview (sample/fetch/live) + dual-path manual import (D-01/03/12/13, VOICE-01/03/04) — *blocking human-verify*
+
+**Wave 5** *(blocked on Wave 4 — same-file 5_Settings.py)*
+
+- [ ] 04-05-PLAN.md — Cross-engine browser + editable/custom labels (voice_labels via app_settings) + Upload-dropdown badges (D-10/11/14/15, VOICE-06, ENGINE-01/03) — *blocking human-verify*
+
+**Wave 6** *(blocked on Wave 5 — same-file 5_Settings.py)*
+
+- [ ] 04-06-PLAN.md — Uninstall (confirm + freed space + in-use block) + partial cleanup (per-item + bulk) + Kokoro model download via the generic layer (D-04/16/17/18/19, VOICE-07, ENGINE-02) — *blocking human-verify*
+
 **UI hint**: yes
 **Note**: management UX (browse/preview/label/badge/install/uninstall) + the download/cache layer are engine-agnostic across present engines (native_os, Kokoro, Piper); the downloadable layer is proven via the Piper catalog + Kokoro model this phase. Heavy engines (Orpheus/F5/Fish) reuse it in Phase 5.
 
@@ -204,7 +229,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Foundation & Privacy Toggle | 4/4 | In Progress (all plans implemented; awaiting phase verifier / roadmap-update pass) | - |
 | 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
 | 3. Native OS TTS (New Default) | 3/5 | In Progress|  |
-| 4. Engine Management & Voice Catalog | 0/TBD | Not started | - |
+| 4. Engine Management & Voice Catalog | 0/6 | Planned | - |
 | 5. Heavy Opt-In Engines | 0/TBD | Not started | - |
 | 6. Packaging & First-Class Windows | 0/TBD | Not started | - |
 | 7. Production Hardening | 0/TBD | Not started | - |
