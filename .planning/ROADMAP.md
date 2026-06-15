@@ -163,7 +163,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 — same-file 5_Settings.py)*
 
-- [ ] 04-05-PLAN.md — Cross-engine browser + editable/custom labels (voice_labels via app_settings) + Upload-dropdown badges (D-10/11/14/15, VOICE-06, ENGINE-01/03) — *blocking human-verify*
+- [x] 04-05-PLAN.md — Cross-engine browser + editable/custom labels (voice_labels via app_settings) + Upload-dropdown badges (D-10/11/14/15, VOICE-06, ENGINE-01/03) — DONE (a3b0a58 feat voice_labels + all_engine_voices + 7a108f0 feat cross-engine browser/label-editor/Upload-badge; 0 deviations; suite 432 passed / 2 skipped / 1 deselected — Plan-01 test_voice_labels scaffold flipped skip→pass). Blocking human-verify APPROVED: cross-engine browse + native_os label edit (D-15) + restart-persistence + filter-feed + Upload badge all PASS (note: all 3 engines showed "Ready" on the verifying machine, so the not-installed footprint wording is unit-verified only). VOICE-06 complete; ENGINE-03 now covers the Upload dropdown too. Uninstall + cleanup + Kokoro download is 04-06 (final).
 
 **Wave 6** *(blocked on Wave 5 — same-file 5_Settings.py)*
 
@@ -229,7 +229,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Foundation & Privacy Toggle | 4/4 | In Progress (all plans implemented; awaiting phase verifier / roadmap-update pass) | - |
 | 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
 | 3. Native OS TTS (New Default) | 3/5 | In Progress|  |
-| 4. Engine Management & Voice Catalog | 4/6 | In Progress|  |
+| 4. Engine Management & Voice Catalog | 5/6 | In Progress|  |
 | 5. Heavy Opt-In Engines | 0/TBD | Not started | - |
 | 6. Packaging & First-Class Windows | 0/TBD | Not started | - |
 | 7. Production Hardening | 0/TBD | Not started | - |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed Phase 04 Plan 04 (full catalog browse + 3-mode preview + dual-path manual import; human-verify browse+preview APPROVED, manual-import UX deferred to UAT — logic automated-tested)
-last_updated: "2026-06-15T15:20:00.000Z"
-last_activity: 2026-06-15 -- Completed Phase 04 Plan 04 (full catalog browse: curated-flat / show-all grouped-by-language + reused filters/search + Refresh; 3-mode preview; validated dual-path import)
+stopped_at: Completed Phase 04 Plan 05 (cross-engine voice browser + editable/custom labels via voice_labels app_settings overrides + Upload-dropdown readiness badges; blocking human-verify APPROVED — browse/edit/persist/badges all PASS)
+last_updated: "2026-06-15T16:05:00.000Z"
+last_activity: 2026-06-15 -- Completed Phase 04 Plan 05 (voice_labels override layer + all_engine_voices cross-engine browser with engine + language/quality filters + name/tag search + per-voice label editor; Upload engine readiness badge via cheap install_state probe)
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 19
-  completed_plans: 17
-  percent: 89
+  completed_plans: 18
+  percent: 95
 ---
 
 # Project State
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-05-29)
 ## Current Position
 
 Phase: 04 (engine-management-voice-catalog) — EXECUTING
-Plan: 5 of 6
-Status: Executing Phase 04 (04-01..04-04 complete; Wave 4 landed full catalog browse + 3-mode preview + validated dual-path import; browse+preview human-verified, manual-import UX deferred to UAT). Next: 04-05 (cross-engine browser + editable labels), Wave 5.
-Last activity: 2026-06-15 -- Completed Phase 04 Plan 04 (full catalog browse: curated-flat / show-all grouped-by-language + reused filters/search + Refresh; 3-mode preview; validated dual-path import)
+Plan: 6 of 6
+Status: Executing Phase 04 (04-01..04-05 complete; Wave 5 landed the cross-engine voice browser + editable/custom voice labels (voice_labels app_settings overrides) + Upload-dropdown readiness badges — human-verify APPROVED). Next: 04-06 (uninstall + partial-download cleanup + in-UI Kokoro single-model download), Wave 6 (final).
+Last activity: 2026-06-15 -- Completed Phase 04 Plan 05 (voice_labels override layer + all_engine_voices cross-engine browser with engine + language/quality filters + name/tag search + per-voice label editor; Upload engine readiness badge via cheap install_state probe)
 
-Progress: [█████████░] 89% (17/19 plans complete; Phase 04 discover+preview+import half landed — full browse, three preview modes, and validated manual import on top of the Wave-3 install slice)
+Progress: [█████████▌] 95% (18/19 plans complete; Phase 04 cross-engine browse + editable labels half landed on top of the Wave-3/4 install + browse/preview/import slices — only the Wave-6 uninstall/cleanup + Kokoro download remains)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 17
+- Total plans completed: 18
 - Average duration: ~5 min implementation (plus blocking human-verify checkpoint gaps)
-- Total execution time: ~1.4 hours active
+- Total execution time: ~1.5 hours active
 
 **By Phase:**
 
@@ -49,8 +49,8 @@ Progress: [█████████░] 89% (17/19 plans complete; Phase 04 d
 
 **Recent Trend:**
 
-- Last 5 plans: 03-05 (~4min impl, Task 3 Windows UAT deferred), 04-01 (~9min, 0 deviations), 04-02 (~7min), 04-03 (~58min impl, wall ~1h spanning blocking human-verify, 3 in-plan deviations), 04-04 (~6min impl, 0 deviations; browse+preview human-verified, manual-import UX deferred to UAT)
-- Trend: 04-04 swung back to a clean run — 0 deviations, suite 428→429 (the Plan-01 test_voice_import HARD-03 scaffold flipped skip→pass when safe_voice_dest landed). Notably the human-verify checkpoint surfaced NO defects this time (vs 04-03's 3), because 04-04 composes already-proven Wave-2/3 substrate (catalog data layer + install machinery + Phase-3 filters reused VERBATIM) rather than introducing a first-of-its-kind pattern. The one open item is a DEFERRED manual UAT (VOICE-04 import UX) — not a defect: the import validation logic is automated-tested green; only the interactive upload/path UX is unverified because no external Piper .onnx+.onnx.json pair was on hand. Two consecutive plans now carry a deferred manual-UAT (03-05 Windows, 04-04 import) — both honestly tracked, neither blocking.
+- Last 5 plans: 04-01 (~9min, 0 deviations), 04-02 (~7min), 04-03 (~58min impl, wall ~1h spanning blocking human-verify, 3 in-plan deviations), 04-04 (~6min impl, 0 deviations; browse+preview human-verified, manual-import UX deferred to UAT), 04-05 (~7min impl, 0 deviations; cross-engine browser + editable labels + Upload badges, blocking human-verify APPROVED — no defects)
+- Trend: 04-05 extended 04-04's clean streak — 0 deviations, suite 429→432 (the Plan-01 test_voice_labels scaffold flipped skip→pass when voice_labels landed). The blocking human-verify surfaced NO defects (second straight checkpoint with none, vs 04-03's 3) because 04-05 again composes proven substrate (the 04-03 dynamic-enumeration foundation + Phase-3 filter_voices reused VERBATIM + the app_settings get/set_setting + voice_cache patterns) rather than a first-of-its-kind mechanism. voice_labels follows the same pure-helper-over-lazy-DB-wrapper shape as registry.resolve_default_voice. One observation (not a defect): all three engines showed "Ready" on the verifying machine (Piper voices + Kokoro model already installed), so the "~X MB, downloads on first use" not-installed wording is unit-verified only. Effective files_modified added voice_cache.py (5 vs the plan's 4) — the no-restart-after-label-edit behavior implemented through the established shared-cache pattern, not scope creep.
 
 *Updated after each plan completion*
 | Phase 01 P02 | ~24min | 3 tasks | 8 files |
@@ -69,6 +69,7 @@ Progress: [█████████░] 89% (17/19 plans complete; Phase 04 d
 | Phase 04 P04-02 | ~7min | 2 tasks | 7 files |
 | Phase 04 P03 | ~58min impl (wall ~1h spanning blocking human-verify) | 2 tasks (1 auto + 1 blocking checkpoint; checkpoint surfaced 3 in-plan Rule-1 deviations) | 9 files (plan named only 5_Settings.py; effective set = 5_Settings.py + 1_Upload.py + voice_cache.py[new] + registry.py + install_state.py + catalog.py + 3 new test files) |
 | Phase 04 P04 | ~6min impl (wall ~10min spanning blocking human-verify) | 3 tasks (2 auto + 1 blocking checkpoint; 0 deviations; checkpoint steps 1-3 APPROVED, steps 4-5 import deferred to UAT) | 3 files (matches files_modified exactly: catalog.py + 5_Settings.py + data/samples/.gitkeep[new]; no scope expansion) |
+| Phase 04 P05 | ~7min impl (wall spanning blocking human-verify) | 3 tasks (1 auto/TDD + 1 auto + 1 blocking checkpoint; 0 deviations; checkpoint APPROVED — browse/edit/persist/badges all PASS, no defects) | 5 files (1 created: voice_labels.py[new]; 4 modified: registry.py + 5_Settings.py + 1_Upload.py + voice_cache.py — plan named 4; +voice_cache.py is the no-restart shared-cache pattern, not scope creep) |
 
 ## Accumulated Context
 
@@ -132,6 +133,9 @@ Recent decisions affecting current work:
 - [Phase 04 plan 04]: Three-mode PREVIEW (VOICE-03/D-12) — installed voice -> live synthesis via the existing create_engine->synthesize->st.audio path (1_Upload.py); not-installed curated voice -> bundled sample clip from diana/data/samples/; any other not-installed voice -> fetch_sample downloads+caches speaker_0.mp3 (so repeat previews are instant/offline) then st.audio. A missing/404 sample is messaged gracefully, not crashed. sample_url_for/fetch_sample are pure Streamlit-free helpers in catalog.py.
 - [Phase 04 plan 04]: Validated dual-path IMPORT (VOICE-04/D-13/HARD-03) — st.file_uploader(accept_multiple_files=True) for the .onnx+.onnx.json pair AND a path-entry text_input for a local file, BOTH routed through safe_voice_dest (RESEARCH Pattern 5 / 1_Upload.py idiom VERBATIM: os.path.basename + resolved-prefix-under-model_dir containment + .onnx/.onnx.json allow-list — T-04-PATH). The pair must be complete (shared base) and the .onnx.json must parse as JSON before any copy (T-04-PAIR); rejection is messaged not crashed. file_uploader is bounded by server.maxUploadSize (T-04-MEMUP/Pitfall 7); the path-entry option sidesteps the cap for large local .onnx. Both files land side-by-side in model_dir() so PiperVoice.load auto-loads the sibling .onnx.json — selectable with NO engine edit. safe_voice_dest is Streamlit-free + unit-tested (the Plan-01 test_voice_import HARD-03 scaffold flipped skip->pass; suite 428->429).
 - [Phase 04 plan 04, DEFERRED manual-UAT — NOT a defect]: At the blocking human-verify checkpoint, browse (curated-flat -> show-all grouped, filters/search, Refresh) + both preview modes (not-installed sample + installed live synth) — steps 1-3 — were APPROVED. The two manual-import steps (4-5: upload + path) were NOT interactively exercised because no external Piper .onnx+.onnx.json pair was available 2026-06-15. This is a deferred verification, not a silent skip and not a defect: the import VALIDATION logic IS covered by passing automated unit tests (test_voice_import green) and the UI wiring is present + parses. VOICE-04's interactive UX is carried forward in .planning/phases/04-engine-management-voice-catalog/04-HUMAN-UAT.md (Settings ▸ Voices ▸ Import from path -> point at any Piper .onnx + sibling .onnx.json -> becomes selectable on Upload; bad import -> clear rejection, not a crash). 0 in-plan deviations. Next: 04-05 (cross-engine browser + editable labels), Wave 5; uninstall + Kokoro is Wave 6 (04-06).
+- [Phase 04 plan 05]: VOICE-06 (editable/custom labels + cross-engine browse) COMPLETE & human-verified. Labels are a UI-only override layer in a NEW diana/tts/voice_labels.py, persisted per voice id in app_settings under `voice.labels.<engine>.<id>` as a JSON dict {name, language, tier, gender, tags:[...]} (RESEARCH storage shape verbatim) — never edits the prelabeled engine data or config.yaml. get/set_label_overrides mirror registry.resolve_default_voice's pure-helper-over-lazy-DB-wrapper shape (lazy `from diana.database import get_setting/set_setting` inside the function); the pure apply_overrides(voice, overrides) dataclasses.replace's any of name/language/gender/tier present and merges custom tags into voice.tags (no-op when empty). search_by_tag is a plain-substring matcher over folded text — user free-text is NEVER compiled as a regex (T-04-REDOS) — unioned with filter_voices' name query. Malformed/absent stored JSON degrades to {} so a bad value cannot crash enumeration (T-04-LBLJSON). voice_labels.py is streamlit-free + unit-tested (the Plan-01 test_voice_labels scaffold flipped skip->pass; suite 429->432).
+- [Phase 04 plan 05]: Cross-engine browse (D-10) = registry.all_engine_voices(config) iterating list_engines() x get_engine_voices() yielding (engine, TTSVoice) for native_os+Kokoro+Piper (installed Piper voices already surface via the 04-03 dynamic branch; create_engine NOT touched). The Settings ▸ Voices "Browse all voices" section applies apply_overrides(get_label_overrides(...)) to EVERY voice BEFORE display, so editing/relabelling works for ANY voice incl. native_os (D-15, proven at the checkpoint by relabeling a native_os voice), with an engine filter + the reused Phase-3 filter_voices/order_by_quality (language + quality) VERBATIM + a name(+tag) search. The per-voice "Edit labels & tags" expander (display name/language/tier/gender + free-text comma tags) writes set_label_overrides ONLY on change and calls clear_voice_cache() so edits show without restart. The shared diana/dashboard/voice_cache.py gained cached_all_engine_voices() (@st.cache_data over all_engine_voices) and clear_voice_cache now clears it too — so voice_cache.py is in 04-05's effective files_modified (plan named 4: voice_labels.py + registry.py + 5_Settings.py + 1_Upload.py; +voice_cache.py is the established no-restart shared-cache pattern, not scope creep). Overrides persist across an app restart (human-verified) and drive the filters/search.
+- [Phase 04 plan 05]: Upload-dropdown readiness badge (ENGINE-03/D-11) — st.selectbox can't carry per-option badges, so a caption below the engine selectbox in 1_Upload.py reports Ready vs "~X MB, downloads on first use" per engine (native_os always Ready; Piper/Kokoro Ready if installed else a footprint estimate), mirroring the _NATIVE_HINT block. Detection is the cheap install_state filesystem probe ONLY — no onnxruntime/piper/kokoro import on the render path (ENGINE-01, T-04-NOIMPORT); install_state is re-exposed via thin lazy shims (piper_voice_installed/piper_footprint_bytes/kokoro_model_installed) from registry so the UI imports ONE place and the cleaning path (engine_is_ascii_only) never pulls install_state. ENGINE-03 now covers the Upload dropdown too, not just the Voices tab. Blocking human-verify APPROVED (browse + native_os label edit + restart-persistence + filter-feed + Upload badge all PASS); 0 in-plan deviations. OBSERVATION (not a defect): all 3 engines showed "Ready" on the verifying machine (Piper voices + Kokoro model already installed), so the "not installed" footprint wording is unit-verified only. Next: 04-06 (final wave) adds VOICE-07 uninstall + per-item/bulk partial-download cleanup + the in-UI Kokoro single-model download/install (D-16/17/18/19).
 
 ### Pending Todos
 
@@ -157,6 +161,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-15T15:20:00.000Z
-Stopped at: Completed Phase 04 Plan 04 (full catalog browse — curated-flat / show-all grouped-by-language + reused Phase-3 filters/search + Refresh; three-mode preview — bundled sample / fetched+cached sample / live synth; validated dual-path manual import via file_uploader + path through safe_voice_dest). Human-verify: browse + both preview modes (steps 1-3) APPROVED; manual-import UX (steps 4-5, VOICE-04) DEFERRED to manual UAT (no external Piper pair 2026-06-15; validation logic automated-tested). 0 in-plan deviations; suite 429 passed / 5 skipped / 1 deselected. Next: 04-05 (cross-engine browser + editable labels + Upload-dropdown badges), Wave 5.
+Last session: 2026-06-15T16:05:00.000Z
+Stopped at: Completed Phase 04 Plan 05 (cross-engine voice browser + editable/custom labels + Upload-dropdown badges). NEW diana/tts/voice_labels.py = UI-only label/tag overrides persisted per voice id in app_settings under voice.labels.<engine>.<id> (JSON; pure apply_overrides merge + lazy-DB get/set; plain-substring search_by_tag — no regex, T-04-REDOS; malformed JSON degrades to {}, T-04-LBLJSON). registry.all_engine_voices(config) aggregates list_engines() x get_engine_voices() across native_os+Kokoro+Piper; Settings ▸ Voices "Browse all voices" applies overrides to every voice before display + engine filter + reused Phase-3 filter_voices + name/tag search + per-voice "Edit labels & tags" editor (clears the shared voice_cache so edits show without restart). 1_Upload.py engine readiness badge via the cheap install_state probe (ENGINE-03/D-11, no heavy import per ENGINE-01). Blocking human-verify APPROVED: cross-engine browse + native_os label edit (D-15) + restart-persistence + filter-feed + Upload badge all PASS (note: all 3 engines showed "Ready" on this machine, so the not-installed footprint wording is unit-verified only). 0 in-plan deviations; suite 432 passed / 2 skipped / 1 deselected. Effective files_modified = 5 (voice_labels.py[new] + registry.py + 5_Settings.py + 1_Upload.py + voice_cache.py; plan named 4 — +voice_cache.py is the no-restart shared-cache pattern). Next: 04-06 (FINAL wave) — VOICE-07 uninstall + per-item/bulk partial-download cleanup + in-UI Kokoro single-model download/install (D-16/17/18/19).
 Resume file: None

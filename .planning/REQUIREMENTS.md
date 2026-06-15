@@ -46,7 +46,7 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 - [x] **ENGINE-01**: Engine availability/capability is detected cheaply, without importing heavy dependencies
 - [x] **ENGINE-02**: Models/weights download on demand with visible byte progress, resumability, and a disk-space pre-check
-- [x] **ENGINE-03**: The engine picker shows install state and download-footprint badges (e.g. "Ready" / "~2.4 GB, downloads on first use")
+- [x] **ENGINE-03**: The engine picker shows install state and download-footprint badges (e.g. "Ready" / "~2.4 GB, downloads on first use") — *Voices-tab badges landed in 04-03; Upload engine-dropdown readiness badge added in 04-05 (cheap install_state probe, no heavy import) and human-verified*
 - [x] **ENGINE-04**: Downloads land in the per-user cache and are triggered only from the UI, never inside the worker/job
 
 ### Voice Management
@@ -56,7 +56,7 @@ Requirements for this milestone. Each maps to a roadmap phase.
 - [x] **VOICE-03**: User can preview a voice (pre-recorded sample if not downloaded; live synthesis if installed) — *three preview modes (bundled sample / fetched+cached sample / live synth) human-verified PASS in 04-04*
 - [ ] **VOICE-04**: User can manually import a downloaded Piper voice (`.onnx` + `.onnx.json`) via the UI — *logic COMPLETE & automated-tested (safe_voice_dest traversal/extension + pair/JSON validation, dual-path file_uploader + path entry wired in 04-04); interactive import UX NOT yet human-verified (no external Piper pair 2026-06-15) — deferred manual UAT tracked in 04-HUMAN-UAT.md*
 - [x] **VOICE-05**: User can select the voice per job
-- [ ] **VOICE-06**: User can edit a voice's labels or add custom ones (persisted across restart, UI-only) — building on the Phase 3 voice-attribute layer — and browse/select voices across engines in one place
+- [x] **VOICE-06**: User can edit a voice's labels or add custom ones (persisted across restart, UI-only) — building on the Phase 3 voice-attribute layer — and browse/select voices across engines in one place — *landed & human-verified in 04-05: voice_labels.py UI-only overrides in app_settings (voice.labels.<engine>.<id>) feeding the reused Phase-3 filters/search; Settings ▸ Voices "Browse all voices" cross-engine browser (all_engine_voices) with engine + language/quality filters + name/tag search and a per-voice "Edit labels & tags" editor; edits persist across restart and work for ANY voice incl. native_os (D-10/D-14/D-15)*
 - [ ] **VOICE-07**: User can uninstall an installed voice from the UI (confirmed, with freed space shown; blocked while the voice is a current per-job choice or per-engine default) and clean up partial/interrupted download files (per-item and a bulk "clean up partial downloads" action)
 
 ### Heavy Opt-In Engines
@@ -132,14 +132,14 @@ Each v1 requirement maps to exactly one phase.
 | NATIVE-05 | Phase 3 | Complete |
 | ENGINE-01 | Phase 4 | Complete |
 | ENGINE-02 | Phase 4 | Complete |
-| ENGINE-03 | Phase 4 | Complete |
+| ENGINE-03 | Phase 4 | Complete (Voices-tab badges via 04-03; Upload-dropdown badge via 04-05) |
 | ENGINE-04 | Phase 4 | Complete |
 | VOICE-01 | Phase 4 | Complete |
 | VOICE-02 | Phase 4 | Complete |
 | VOICE-03 | Phase 4 | Complete |
 | VOICE-04 | Phase 4 | Pending (logic done + automated-tested; interactive import UAT deferred — 04-HUMAN-UAT.md) |
 | VOICE-05 | Phase 4 | Complete |
-| VOICE-06 | Phase 4 | Pending |
+| VOICE-06 | Phase 4 | Complete (cross-engine browse + editable/custom labels via 04-05; human-verified) |
 | VOICE-07 | Phase 4 | Pending |
 | HEAVY-01 | Phase 5 | Pending |
 | HEAVY-02 | Phase 5 | Pending |
@@ -161,6 +161,7 @@ Each v1 requirement maps to exactly one phase.
 
 ---
 *Requirements defined: 2026-05-29*
-*Last updated: 2026-06-15 — Phase 4 discussion added VOICE-07 (uninstall installed voices + clean partial downloads, UI-only), per user request during context gathering. Coverage 42 → 43, all mapped.*
+*Last updated: 2026-06-15 — Phase 4 plan 05 complete: VOICE-06 (cross-engine browse/select + editable/custom UI-only labels) flipped to Complete (human-verified); ENGINE-03 note extended to cover the Upload-dropdown badge (04-05) in addition to the Voices-tab badges (04-03). ENGINE-01 already Complete (badge path uses the cheap install_state probe only).*
+*Previously: 2026-06-15 — Phase 4 discussion added VOICE-07 (uninstall installed voices + clean partial downloads, UI-only), per user request during context gathering. Coverage 42 → 43, all mapped.*
 *Previously: 2026-06-01 — Phase 3 discussion expanded the native-OS voice-picker scope: added NATIVE-05 (voice attributes + language/quality filter + name search, Phase 3) and VOICE-06 (user-editable/custom labels + cross-engine browser, Phase 4). Coverage 40 → 42, all mapped.*
 *Previously: 2026-05-31 after Phase 01 plan 04 completion (PRIV-02 satisfied; PRIV-04 fully complete across Upload + News halves). All four Phase-01 plans implemented; phase row close-out left for the orchestrator's verifier / roadmap-update pass.*
