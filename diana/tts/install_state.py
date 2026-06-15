@@ -10,7 +10,17 @@ probe (one model, many baked-in voices — D-19): an ``.onnx`` variant AND
 ``voices-v1.0.bin``. Footprint of an installed voice is its on-disk ``.onnx`` size;
 0 when absent (the catalog manifest ``size_bytes`` is the not-installed estimate,
 resolved by the caller from the catalog, not here — this module stays import-light).
+
+Heavy engines (Orpheus / F5 / Fish — Phase 5) extend the SAME contract: their
+install state is a pure filesystem probe of the per-engine venv under
+``paths.venvs_dir()`` plus a ``.{engine}.installed`` marker. Orpheus has its own
+torch-free venv; F5 + Fish share the ``torch`` venv (D-03), so uninstalling one of
+the shared pair removes only its marker (and the venv tree only once nothing else
+still uses it). NOTHING here imports torch/llama-cpp/orpheus_cpp/f5_tts (ENGINE-01).
 """
+
+import shutil
+import sys
 
 from diana import paths
 
@@ -113,4 +123,104 @@ def uninstall_piper_voice(voice_id: str) -> int:
         if target.exists():
             freed += target.stat().st_size
         target.unlink(missing_ok=True)
+    return freed
+
+
+# --- Heavy-engine install-state probes (Phase 5 — filesystem only, NO heavy SDK) --
+
+def _is_win() -> bool:
+    """True on Windows (venv python is ``Scripts/python.exe`` vs ``bin/python``)."""
+    return sys.platform == "win32"
+
+
+def _heavy_venv_name(engine: str) -> str:
+    """Map a heavy engine to its venv folder name (D-03 shared-torch).
+
+    Orpheus is torch-free in its own ``orpheus`` venv; F5 and Fish share the
+    ``torch`` venv (F5 installs torch, Fish reuses it). Unknown engines default to
+    ``torch`` — the conservative shared home.
+    """
+    return "orpheus" if engine == "orpheus" else "torch"
+
+
+def _heavy_venv_python(engine: str):
+    """The venv interpreter path for a heavy engine (per OS)."""
+    venv = paths.venvs_dir() / _heavy_venv_name(engine)
+    return venv / ("Scripts/python.exe" if _is_win() else "bin/python")
+
+
+def heavy_engine_installed(engine: str) -> bool:
+    """True iff the engine's venv python AND ``.{engine}.installed`` marker exist.
+
+    Pure filesystem probe (RESEARCH install-state example): the venv interpreter
+    (``venvs_dir()/<venv>/<bin/python>``) confirms the deps were provisioned, and
+    the per-engine ``venvs_dir()/.{engine}.installed`` marker (written at the END of
+    a successful install) confirms BOTH deps and weights finished — so a half-done or
+    shared-venv-but-not-this-engine state reads as not installed. NO torch/llama-cpp/
+    orpheus_cpp/f5_tts import (ENGINE-01 / D-17).
+    """
+    py = _heavy_venv_python(engine)
+    marker = paths.venvs_dir() / f".{engine}.installed"
+    return py.exists() and marker.exists()
+
+
+def _dir_size_bytes(path) -> int:
+    """Total on-disk size of a directory tree (0 if absent). Pure filesystem walk."""
+    if not path.exists():
+        return 0
+    total = 0
+    for f in path.rglob("*"):
+        if f.is_file():
+            try:
+                total += f.stat().st_size
+            except OSError:
+                pass
+    return total
+
+
+def heavy_footprint_bytes(engine: str) -> int:
+    """On-disk size of a heavy engine's venv tree, else 0 (ENGINE-03/D-04).
+
+    Sums the per-engine venv directory (deps + any co-located weight/library files)
+    so the UI can show reclaimable space before/after an uninstall (D-04). 0 when the
+    venv does not exist (not installed). Pure filesystem walk: NO heavy SDK import.
+    The HF weight cache (``hf_cache_dir()``) is shared across engines, so it is NOT
+    summed here — the venv footprint is the per-engine reclaimable figure.
+    """
+    venv = paths.venvs_dir() / _heavy_venv_name(engine)
+    return _dir_size_bytes(venv)
+
+
+def uninstall_heavy_engine(engine: str) -> int:
+    """Remove a heavy engine's install; return freed bytes (D-16, scoped to venvs_dir).
+
+    Always removes the ``.{engine}.installed`` marker. The venv directory itself is
+    ``shutil.rmtree``'d ONLY when no OTHER engine still shares it — so removing F5
+    while Fish remains installed deletes the ``.f5.installed`` marker but KEEPS the
+    shared ``torch`` venv (and vice-versa); removing the last engine that uses a venv
+    deletes the tree. Orpheus owns its venv alone, so it is always removed.
+
+    Scoped to ``paths.venvs_dir()`` ONLY (the marker + the venv subfolder are
+    basename-joined Paths under the per-user dir, never a user-supplied path —
+    T-05-EXE), with marker-then-venv ordering. Returns the bytes freed (the venv tree
+    size when removed, else 0). Pure filesystem op: NO heavy SDK import.
+    """
+    venvs = paths.venvs_dir()
+    marker = venvs / f".{engine}.installed"
+    marker.unlink(missing_ok=True)
+
+    venv_name = _heavy_venv_name(engine)
+    venv = venvs / venv_name
+
+    # Does any OTHER engine still share this venv (its marker survives)?
+    shared_by_other = any(
+        other != engine
+        and _heavy_venv_name(other) == venv_name
+        and (venvs / f".{other}.installed").exists()
+        for other in ("orpheus", "f5", "fish")
+    )
+    freed = 0
+    if venv.exists() and not shared_by_other:
+        freed = _dir_size_bytes(venv)
+        shutil.rmtree(venv, ignore_errors=True)
     return freed

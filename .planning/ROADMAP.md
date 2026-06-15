@@ -182,7 +182,7 @@ Plans:
 
   1. User can install and synthesize with Orpheus (llama-cpp-python + GGUF, CPU-viable) using its named voices
   2. User can install F5-TTS on demand, see and accept an in-app non-commercial license disclosure before download, and clone a voice from a validated reference-audio clip
-  3. Fish Audio S2 Pro is hidden unless a capable GPU is detected; when shown, it is opt-in and presents its non-commercial license disclosure before download
+  3. Fish Audio S2 Pro is shown but disabled with a 'requires a capable GPU (~12+ GB VRAM)' reason when none is detected; when shown, it is opt-in and presents its non-commercial license disclosure before download
   4. Choosing a heavy engine without its model installed fails fast with an actionable prompt rather than erroring mid-job
 
 **Plans**: 7 plans

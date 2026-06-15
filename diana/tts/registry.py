@@ -7,14 +7,24 @@ _ENGINE_CLASSES = {
     "kokoro": KokoroEngine,
 }
 
+# The heavy, opt-in neural engines (Phase 5). They badge/gate/fail-fast cheaply
+# here (filesystem + nvidia-smi only), but are NOT added to list_engines() or
+# _get_engine_class in this slice — each engine joins those seams in its OWN wave
+# so all_engine_voices never tries to import a not-yet-built engine (D-17).
+_HEAVY_ENGINES = {"orpheus", "f5", "fish"}
+
 # Whether each engine's tokenizer requires pure ASCII. Static name->bool map,
 # queried with NO engine import so pipeline.py/llm_cleaner.py can resolve an
 # engine's character capability without pulling onnxruntime/piper onto the
 # cleaning path. native_os (Phase 3) will be False (the OS voices speak UTF-8).
+# The heavy neural engines (orpheus/f5/fish) are UTF-8 capable -> False (D-17).
 _ASCII_ONLY_ENGINES = {
     "kokoro": True,
     "piper": False,
     "native_os": False,   # OS voices speak UTF-8 — no cleaner transliteration (Phase 2)
+    "orpheus": False,
+    "f5": False,
+    "fish": False,
 }
 
 
@@ -179,6 +189,29 @@ def kokoro_model_installed() -> bool:
     """True iff the Kokoro model + voices bin are on disk (cheap probe; ENGINE-01)."""
     from diana.tts.install_state import kokoro_model_installed as _probe
     return _probe()
+
+
+def heavy_engine_failfast(engine_name: str) -> str | None:
+    """Pre-flight refusal for an uninstalled heavy engine, else ``None`` (D-16).
+
+    The fail-fast contract for success-criterion #4: a heavy engine chosen for a job
+    is checked UP FRONT — when it is one of the heavy engines (orpheus/f5/fish) AND
+    its deps/model are not installed, this returns an actionable string telling the
+    user to install it in Settings ▸ Voices, so the job NEVER starts and never errors
+    mid-conversion. Returns ``None`` for an installed heavy engine (the job may start)
+    and for any non-heavy engine (native_os/kokoro/piper — never heavy-gated).
+
+    Cheap by design: the install check is a pure filesystem probe; ``install_state``
+    is imported lazily so the cleaning/enumeration path never pulls it, and NO
+    torch/llama-cpp/orpheus_cpp/f5_tts is imported here (ENGINE-01 / D-17).
+    """
+    if engine_name not in _HEAVY_ENGINES:
+        return None
+    from diana.tts.install_state import heavy_engine_installed
+    if heavy_engine_installed(engine_name):
+        return None
+    return (f"{engine_name.capitalize()} isn't installed — "
+            "open Settings ▸ Voices and click Install.")
 
 
 def resolve_engine_name(saved: str) -> str:

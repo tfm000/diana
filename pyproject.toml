@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
 readme = "README.md"
 dependencies = [
-    "streamlit>=1.30.0",
+    "streamlit>=1.40.0",
     "PyMuPDF>=1.23.0",
     "EbookLib>=0.18",
     "beautifulsoup4>=4.12.0",
@@ -50,9 +50,13 @@ include = ["diana*"]
 
 [tool.setuptools.package-data]
 # Ship the bundled curated Piper manifest (D-02) and the curated preview samples
-# (diana/data/samples/*, added in Plan 04). The Phase-6 packager MUST verify these
-# land in the PyInstaller bundle (RESEARCH Runtime State Inventory).
-diana = ["data/*.json", "data/samples/*"]
+# (diana/data/samples/*, added in Plan 04). Phase 5 stages the heavy-engine globs:
+# the bundled `uv` provisioner binary (data/bin/*, dropped in Phase 6), the bundled
+# F5 default voice (data/voices/*, lands with the F5 slice — D-15), and the
+# out-of-process heavy worker scripts (tts/heavy_workers/*.py, run by the venv
+# python — D-17). The Phase-6 packager MUST verify these land in the PyInstaller
+# bundle (RESEARCH Runtime State Inventory).
+diana = ["data/*.json", "data/samples/*", "data/bin/*", "data/voices/*", "tts/heavy_workers/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

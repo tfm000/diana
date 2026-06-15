@@ -1,5 +1,5 @@
 # Web dashboard
-streamlit>=1.30.0
+streamlit>=1.40.0
 
 # Text extraction
 PyMuPDF>=1.23.0
