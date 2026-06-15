@@ -87,7 +87,11 @@ def _download_piper_voice(voice_id: str, entry: dict, state: dict) -> None:
     progress denominator is the manifest grand-total so the bar reflects the whole
     install, not just the current file (Pitfall 1 — never a zero Content-Length).
     A truthy ``state["cancel"]`` is forwarded to ``download_file``, which leaves the
-    ``.part`` for Resume (D-06/D-07). Any exception lands in ``state["error"]``.
+    ``.part`` for Resume (D-06/D-07); on stopping, this thread sets the observable
+    TERMINAL marker ``state["cancelled"] = True`` so the action column can switch the
+    row from "Cancel" to "Resume" once the thread has actually exited (without it the
+    record would read ``done=False, error=None`` forever and the row would stay stuck
+    showing Cancel). Any exception lands in ``state["error"]``.
     """
     targets = _piper_install_targets(entry)
     grand_total = sum((size or 0) for _, _, _, size in targets) or state.get("total") or 1
@@ -105,7 +109,11 @@ def _download_piper_voice(voice_id: str, entry: dict, state: dict) -> None:
                 progress=_progress, cancel=lambda: state["cancel"],
             )
             if state["cancel"]:
-                return  # D-07: stop here, .part kept for Resume (D-06)
+                # D-07: stop here, .part kept for Resume (D-06). Mark a TERMINAL
+                # cancelled state on the shared dict (NOT st.* — this is the worker
+                # thread) so the script thread can render Resume once we have exited.
+                state["cancelled"] = True
+                return
             completed_bytes += (size or 0)
             state["downloaded"] = completed_bytes
         state["done"] = True
@@ -114,8 +122,67 @@ def _download_piper_voice(voice_id: str, entry: dict, state: dict) -> None:
 
 
 def _new_dl_state(total: int) -> dict:
-    """A fresh per-voice download-state record for ``st.session_state.dl_state``."""
-    return {"downloaded": 0, "total": total, "done": False, "error": None, "cancel": False}
+    """A fresh per-voice download-state record for ``st.session_state.dl_state``.
+
+    ``cancel`` is the REQUEST flag the UI sets to ask the worker to stop; ``cancelled``
+    is the TERMINAL marker the worker sets once it has actually stopped (so the action
+    column can tell "Cancel pending" from "Cancelled — offer Resume"). A fresh record
+    (e.g. one created by Resume) always starts with both False so the new attempt is
+    genuinely in-flight again (D-06).
+    """
+    return {
+        "downloaded": 0, "total": total, "done": False,
+        "error": None, "cancel": False, "cancelled": False,
+    }
+
+
+def _download_action(state: dict | None) -> str:
+    """Pure state -> action label for the Voices-tab action column (D-06/D-07).
+
+    Mirrors the Phase-3 ``resolve_selected_voice_id`` precedent: a Streamlit-free,
+    unit-testable decision so the cancel/resume transitions can be tested without a
+    ScriptRunContext. Returns exactly one of:
+
+      - ``"install"``    — no state yet, or a finished record was cleared: show Install.
+      - ``"downloading"``— genuinely in-flight (not done/error, cancel not requested):
+                           show Cancel.
+      - ``"cancelling"`` — cancel was requested but the worker has not yet stopped
+                           (``cancel`` True, ``cancelled``/``done``/``error`` not yet
+                           set): show a disabled "Cancelling…" so a second writer
+                           thread is NEVER spawned onto the same ``.part`` mid-stop
+                           (Pitfall 3 / T-04-RETRIG).
+      - ``"resume"``     — a TERMINAL interrupted record (``cancelled`` True) OR an
+                           errored one: show Resume (offsets from the kept ``.part``).
+      - ``"done"``       — the download finished: show Installed.
+
+    Note ``done``/``error`` win over a lingering ``cancel`` request: an attempt that
+    finished or failed before observing the cancel is reported as done/resume, not
+    cancelling.
+    """
+    if not state:
+        return "install"
+    if state.get("done"):
+        return "done"
+    if state.get("error"):
+        return "resume"
+    if state.get("cancelled"):
+        return "resume"
+    if state.get("cancel"):
+        return "cancelling"
+    return "downloading"
+
+
+def _can_spawn_download(state: dict | None) -> bool:
+    """Pure spawn-guard: may a download thread be (re)spawned for this record?
+
+    Pitfall 3 / T-04-RETRIG: block a respawn ONLY while a download is genuinely
+    in-flight (the ``"downloading"`` action) or while a cancel is mid-flight but the
+    worker has not yet exited (``"cancelling"``) — spawning then would put a second
+    writer thread on the same ``.part``. Allow a (re)spawn when there is no record,
+    when it finished/errored, or when it reached the TERMINAL cancelled state (Resume).
+    Kept pure so the guard is unit-testable alongside ``_download_action``.
+    """
+    return _download_action(state) not in ("downloading", "cancelling")
 
 
 @st.fragment(run_every="0.5s")
@@ -127,6 +194,15 @@ def _render_download_progress(voice_id: str) -> None:
     here executes on the script thread (safe); the download thread only mutates the
     shared dict this reads. Once ``done``/``error`` is set, the auto-refresh stops
     re-arming work because the next click rebuilds state.
+
+    The Cancel/Resume action buttons live in the main script body (NOT in this
+    fragment), so a terminal transition the worker writes between full reruns —
+    ``error`` or the cancel-acknowledged ``cancelled`` marker — would not flip the
+    row to "Resume" until some unrelated rerun. When this poll observes that the
+    worker has just reached a terminal state, it requests a single FULL rerun
+    (``st.rerun()``) so the action column re-renders Resume on its own; the 0.5s
+    cadence keeps the page responsive (no busy-loop) and ``done`` is left to the
+    fragment alone (the body already shows the "Installed" disabled button).
     """
     dl_state = st.session_state.get("dl_state", {})
     state = dl_state.get(voice_id)
@@ -136,6 +212,12 @@ def _render_download_progress(voice_id: str) -> None:
         st.error(f"Download failed: {state['error']}")
     elif state["done"]:
         st.success("Installed.")
+    elif state.get("cancelled"):
+        st.warning("Cancelled. Resume to continue from where it stopped.")
+    elif state["cancel"]:
+        # Cancel requested; the worker is finishing its current write before it sets
+        # the terminal ``cancelled`` marker. Show a transient note (no button here).
+        st.caption("Cancelling…")
     else:
         total = state["total"] or 1
         st.progress(
@@ -143,21 +225,37 @@ def _render_download_progress(voice_id: str) -> None:
             text=f"{state['downloaded'] / 1e6:.1f} / {total / 1e6:.1f} MB",
         )
 
+    # Trigger ONE full rerun when the worker has just reached a terminal interrupted
+    # state (errored or cancel-acknowledged) so the main-body action column flips to
+    # "Resume" without needing an unrelated click. Guard with a per-voice flag so we
+    # rerun exactly once per terminal transition (no rerun storm).
+    _seen = st.session_state.setdefault("_dl_terminal_seen", set())
+    _is_terminal = bool(state["error"]) or bool(state.get("cancelled"))
+    if _is_terminal and voice_id not in _seen:
+        _seen.add(voice_id)
+        st.rerun()
+    elif not _is_terminal and voice_id in _seen:
+        # A fresh attempt (Resume) reset the record — allow the next terminal rerun.
+        _seen.discard(voice_id)
+
 
 def _start_piper_download(voice_id: str, entry: dict, footprint: int) -> None:
     """Spawn the download thread for ``voice_id`` unless one is already in-flight.
 
     Pitfall 3 / T-04-RETRIG: a Streamlit rerun (or a double-click) must NOT spawn a
     second writer thread for the same voice — that would corrupt the shared ``.part``.
-    Guard on the live ``dl_state`` record: only spawn when none exists or the prior
-    attempt finished (done/error). One in-flight download is serialized per voice id
-    (RESEARCH Open Question 3).
+    Guard on the live ``dl_state`` record via the pure ``_can_spawn_download``: spawn
+    only when none exists, the prior attempt finished/errored, or it reached the
+    TERMINAL cancelled state (Resume). A merely "cancelling" record (cancel requested,
+    worker not yet exited) is refused, so we never put a second writer on the same
+    ``.part`` mid-stop. One in-flight download is serialized per voice id (RESEARCH
+    Open Question 3).
     """
     if "dl_state" not in st.session_state:
         st.session_state.dl_state = {}
     existing = st.session_state.dl_state.get(voice_id)
-    if existing and not existing["done"] and not existing["error"]:
-        return  # already downloading — do not double-spawn (Pitfall 3)
+    if not _can_spawn_download(existing):
+        return  # genuinely in-flight or mid-cancel — do not double-spawn (Pitfall 3)
     state = _new_dl_state(footprint)
     st.session_state.dl_state[voice_id] = state
     threading.Thread(
@@ -408,19 +506,28 @@ with tab_voices:
 
             _dl_state = st.session_state.get("dl_state", {})
             _state = _dl_state.get(_v.id)
-            _in_flight = bool(_state) and not _state["done"] and not _state["error"]
-            _interrupted = bool(_state) and not _state["done"] and bool(_state["error"])
+            # Pure state -> action decision (D-06/D-07); unit-tested off the UI.
+            _action = _download_action(_state)
+            # Any live record (in-flight, cancelling, or terminal interrupted) drives
+            # the progress poller below; a cleared/absent record does not.
+            _active = bool(_state) and _action != "install"
 
             with _action_col:
-                if _installed and not _in_flight:
+                if _installed and _action in ("install", "done"):
                     st.button("Installed", key=f"installed_{_v.id}", disabled=True)
-                elif _in_flight:
+                elif _action == "downloading":
                     # D-07: Cancel halts but keeps the .part for a later Resume.
                     if st.button("Cancel", key=f"cancel_{_v.id}"):
                         _state["cancel"] = True
-                elif _interrupted:
+                        st.rerun()
+                elif _action == "cancelling":
+                    # Cancel requested but the worker has not yet stopped — never offer
+                    # Resume here (a second writer on the same .part — Pitfall 3).
+                    st.button("Cancelling…", key=f"cancelling_{_v.id}", disabled=True)
+                elif _action == "resume":
                     # D-06: Resume re-spawns the download, which offsets from the
-                    # existing .part rather than restarting from zero.
+                    # existing .part rather than restarting from zero. Reachable for a
+                    # TERMINAL cancelled record OR an errored one.
                     if st.button("Resume", key=f"resume_{_v.id}"):
                         _start_piper_download(_v.id, _entry, int(_footprint))
                         st.rerun()
@@ -440,7 +547,7 @@ with tab_voices:
                             st.rerun()
 
             # Live byte-progress / result, polled from the script thread (D-08).
-            if _state and (_in_flight or _state["done"] or _state["error"]):
+            if _active:
                 _render_download_progress(_v.id)
 
     st.divider()
