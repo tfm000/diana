@@ -48,6 +48,12 @@ def _get_engine_class(engine_name: str):
         # lives only in heavy_workers/f5_worker.py, run by the torch venv's own python.
         from diana.tts.f5_engine import F5Engine
         return F5Engine
+    if engine_name == "fish":
+        # Lazy: fish_engine's module top is heavy-import-free (ENGINE-01), so this import
+        # does NOT pull torch/fish_speech onto the cheap enumeration path (D-17). The SDK
+        # lives only in heavy_workers/fish_worker.py, run by the torch venv's own python.
+        from diana.tts.fish_engine import FishEngine
+        return FishEngine
     cls = _ENGINE_CLASSES.get(engine_name)
     if cls is None:
         raise ValueError(f"Unknown TTS engine: {engine_name}")
@@ -79,6 +85,13 @@ def create_engine(config: DianaConfig, engine_name: str | None = None):
         # default clip via paths. initialize() fail-fasts (D-16) when not installed.
         from diana.tts.f5_engine import F5Engine
         engine = F5Engine()
+    elif engine_name == "fish":
+        # No config model paths — Fish self-locates the shared torch venv + the bundled
+        # default clip via paths. initialize() fail-fasts (D-16) when not installed AND
+        # gates on a capable NVIDIA GPU (D-10) — so create_engine("fish") on a GPU-less
+        # box refuses here, before any synth (defence-in-depth, T-05-GPU).
+        from diana.tts.fish_engine import FishEngine
+        engine = FishEngine()
     else:
         raise ValueError(f"Unknown TTS engine: {engine_name}")
 
@@ -113,6 +126,8 @@ def get_engine_voices(engine_name: str, config: DianaConfig | None = None) -> li
         return _piper_voices()
     if engine_name == "f5":
         return _f5_voices()
+    if engine_name == "fish":
+        return _fish_voices()
     cls = _get_engine_class(engine_name)
     return list(cls.VOICES)
 
@@ -136,6 +151,36 @@ def _f5_voices() -> list[TTSVoice]:
     from diana.tts.f5_engine import F5Engine
 
     voices = list(F5Engine.VOICES)
+    seen = {v.id for v in voices}
+    for v in custom_voices.list_custom_voices():
+        if v.id in seen:
+            continue
+        seen.add(v.id)
+        voices.append(v)
+    return voices
+
+
+def _fish_voices() -> list[TTSVoice]:
+    """The Fish bundled default MERGED with every saved custom voice (D-14/D-15/A6).
+
+    Fish has no baked-in voices (zero-shot clone — A6): it surfaces the single bundled,
+    license-clean default (``FishEngine.VOICES``, reusing F5's clip) plus the SHARED
+    engine-agnostic Custom Voices pool (``custom_voices.list_custom_voices`` — D-11), so a
+    saved custom voice appears in the Upload picker AND, via ``all_engine_voices``, the
+    cross-engine browser (D-14). Mirrors ``_f5_voices``: the static default first, each
+    custom voice not already present appended, deduped by id.
+
+    Cheap by design: a ``*.wav`` glob + an ``app_settings`` read — no engine SDK import
+    (ENGINE-01 / D-17). ``fish_engine``'s module top is heavy-import-free, and ``custom_voices``
+    imports no torch, so this leaves ``torch`` OUT of ``sys.modules`` on the enumeration path.
+    Both are imported lazily so the cleaning path (``engine_is_ascii_only``) never pulls them.
+    NB: this enumeration is GPU-INDEPENDENT — the cross-engine browser lists Fish's voices
+    even on a GPU-less box; the GPU gate only blocks INSTALL/SYNTH (D-10), not browsing.
+    """
+    from diana.tts import custom_voices
+    from diana.tts.fish_engine import FishEngine
+
+    voices = list(FishEngine.VOICES)
     seen = {v.id for v in voices}
     for v in custom_voices.list_custom_voices():
         if v.id in seen:
