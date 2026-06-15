@@ -107,15 +107,15 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Wave 0 test scaffolding: pytest-asyncio + asyncio_mode, captured `say -v '?'` fixture, RED/xfail scaffolds for the native engine + macOS parser (Nyquist contract for NATIVE-01..05)
+- [x] 03-01-PLAN.md — Wave 0 test scaffolding: pytest-asyncio + asyncio_mode, captured `say -v '?'` fixture, RED/xfail scaffolds for the native engine + macOS parser (Nyquist contract for NATIVE-01..05)
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 03-02-PLAN.md — macOS data layer: extend `TTSVoice` with tier+bilingual (defaults keep kokoro/piper valid), `native_voices_macos.py` `say -v '?'` parser + curated prelabel map (NATIVE-03, NATIVE-05)
+- [x] 03-02-PLAN.md — macOS data layer: extend `TTSVoice` with tier+bilingual (defaults keep kokoro/piper valid), `native_voices_macos.py` `say -v '?'` parser + curated prelabel map (NATIVE-03, NATIVE-05)
 
 **Wave 3** *(blocked on Wave 2 — shared `native_os_engine.py`/`base.py`)*
 
-- [ ] 03-03-PLAN.md — macOS engine + registry + default flip: `NativeOSEngine` (macOS `say` synth, WinRT stubbed), dynamic `get_engine_voices` branch, default engine→native_os, the two known test-break fixes (NATIVE-01, NATIVE-03, NATIVE-04)
+- [x] 03-03-PLAN.md — macOS engine + registry + default flip: `NativeOSEngine` (macOS `say` synth, WinRT stubbed), dynamic `get_engine_voices` branch, default engine→native_os, the two known test-break fixes (NATIVE-01, NATIVE-03, NATIVE-04)
 
 **Wave 4** *(blocked on Wave 3 — shared `native_os_engine.py`)*
 
@@ -133,7 +133,7 @@ Plans:
 **Goal**: Users can discover, install, preview, and use additional voices entirely in-app — powered by a shared on-demand model-download layer that is proven end-to-end by the Piper voice catalog before any heavy engine relies on it.
 **Mode:** mvp
 **Depends on**: Phase 1 (per-user storage), Phase 3 (dynamic voice-listing + voice-attribute layer)
-**Requirements**: ENGINE-01, ENGINE-02, ENGINE-03, ENGINE-04, VOICE-01, VOICE-02, VOICE-03, VOICE-04, VOICE-05, VOICE-06
+**Requirements**: ENGINE-01, ENGINE-02, ENGINE-03, ENGINE-04, VOICE-01, VOICE-02, VOICE-03, VOICE-04, VOICE-05, VOICE-06, VOICE-07
 **Success Criteria** (what must be TRUE):
 
   1. The engine picker shows each engine's install state and download footprint (e.g. "Ready" / "~2.4 GB, downloads on first use") without triggering heavy imports
@@ -141,9 +141,11 @@ Plans:
   3. User can preview any voice (pre-recorded sample if not installed, live synthesis if installed) and select a specific voice per job
   4. User can manually import a downloaded Piper voice (`.onnx` + `.onnx.json`) through the UI, and all downloads land in the per-user cache triggered only from the UI — never inside a running job
   5. Building on Phase 3's voice-attribute layer, the user can edit a voice's labels or add custom ones (persisted across restart, UI-only), and browse/select voices across engines in one place
+  6. User can uninstall an installed voice from the UI (confirmed, freed space shown; blocked while it is a current per-job choice or per-engine default) and clean up partial/interrupted downloads (per-item and a bulk action)
 
 **Plans**: TBD
 **UI hint**: yes
+**Note**: management UX (browse/preview/label/badge/install/uninstall) + the download/cache layer are engine-agnostic across present engines (native_os, Kokoro, Piper); the downloadable layer is proven via the Piper catalog + Kokoro model this phase. Heavy engines (Orpheus/F5/Fish) reuse it in Phase 5.
 
 ### Phase 5: Heavy Opt-In Engines
 
@@ -201,7 +203,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 |-------|----------------|--------|-----------|
 | 1. Foundation & Privacy Toggle | 4/4 | In Progress (all plans implemented; awaiting phase verifier / roadmap-update pass) | - |
 | 2. Rule-Based Cleaner Overhaul | 4/4 | Complete   | 2026-06-01 |
-| 3. Native OS TTS (New Default) | 0/5 | Not started | - |
+| 3. Native OS TTS (New Default) | 3/5 | In Progress|  |
 | 4. Engine Management & Voice Catalog | 0/TBD | Not started | - |
 | 5. Heavy Opt-In Engines | 0/TBD | Not started | - |
 | 6. Packaging & First-Class Windows | 0/TBD | Not started | - |

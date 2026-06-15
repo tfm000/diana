@@ -36,10 +36,11 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### Native OS TTS (Default)
 
-- [ ] **NATIVE-01**: `NativeOSEngine` is the default engine; the macOS backend uses `say`
+- [x] **NATIVE-01**: `NativeOSEngine` is the default engine; the macOS backend uses `say`
 - [ ] **NATIVE-02**: The Windows backend uses WinRT `SpeechSynthesizer` for neural voices (SAPI5 only as a last-resort fallback; no cloud `edge-tts`)
-- [ ] **NATIVE-03**: System voices are enumerated dynamically from the OS on both platforms
-- [ ] **NATIVE-04**: A fresh install produces audio with zero downloads using native OS voices
+- [x] **NATIVE-03**: System voices are enumerated dynamically from the OS on both platforms
+- [x] **NATIVE-04**: A fresh install produces audio with zero downloads using native OS voices
+- [x] **NATIVE-05**: Enumerated voices carry descriptive attributes (language incl. bilingual, quality tier — novelty/compact/enhanced/standard, gender) — prelabelled for macOS, best-effort from WinRT metadata on Windows — and the voice picker supports filtering by language/quality and searching by name; each engine exposes a default voice (native OS = the OS system default)
 
 ### Engine & Model Management
 
@@ -55,6 +56,8 @@ Requirements for this milestone. Each maps to a roadmap phase.
 - [ ] **VOICE-03**: User can preview a voice (pre-recorded sample if not downloaded; live synthesis if installed)
 - [ ] **VOICE-04**: User can manually import a downloaded Piper voice (`.onnx` + `.onnx.json`) via the UI
 - [ ] **VOICE-05**: User can select the voice per job
+- [ ] **VOICE-06**: User can edit a voice's labels or add custom ones (persisted across restart, UI-only) — building on the Phase 3 voice-attribute layer — and browse/select voices across engines in one place
+- [ ] **VOICE-07**: User can uninstall an installed voice from the UI (confirmed, with freed space shown; blocked while the voice is a current per-job choice or per-engine default) and clean up partial/interrupted download files (per-item and a bulk "clean up partial downloads" action)
 
 ### Heavy Opt-In Engines
 
@@ -122,10 +125,11 @@ Each v1 requirement maps to exactly one phase.
 | CLEAN-06 | Phase 2 | Complete |
 | CLEAN-07 | Phase 2 | Complete |
 | CLEAN-08 | Phase 2 | Complete |
-| NATIVE-01 | Phase 3 | Pending |
+| NATIVE-01 | Phase 3 | Complete |
 | NATIVE-02 | Phase 3 | Pending |
-| NATIVE-03 | Phase 3 | Pending |
-| NATIVE-04 | Phase 3 | Pending |
+| NATIVE-03 | Phase 3 | Complete |
+| NATIVE-04 | Phase 3 | Complete |
+| NATIVE-05 | Phase 3 | Complete |
 | ENGINE-01 | Phase 4 | Pending |
 | ENGINE-02 | Phase 4 | Pending |
 | ENGINE-03 | Phase 4 | Pending |
@@ -135,6 +139,8 @@ Each v1 requirement maps to exactly one phase.
 | VOICE-03 | Phase 4 | Pending |
 | VOICE-04 | Phase 4 | Pending |
 | VOICE-05 | Phase 4 | Pending |
+| VOICE-06 | Phase 4 | Pending |
+| VOICE-07 | Phase 4 | Pending |
 | HEAVY-01 | Phase 5 | Pending |
 | HEAVY-02 | Phase 5 | Pending |
 | HEAVY-03 | Phase 5 | Pending |
@@ -149,10 +155,12 @@ Each v1 requirement maps to exactly one phase.
 | HARD-04 | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 40 total
-- Mapped to phases: 40 ✓
+- v1 requirements: 43 total
+- Mapped to phases: 43 ✓
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-29*
-*Last updated: 2026-05-31 after Phase 01 plan 04 completion (PRIV-02 satisfied; PRIV-04 News half satisfied — combined with 01-03's Upload-half, PRIV-04 is now fully complete). All four Phase-01 plans implemented; phase row close-out (and the v1 RETIRE-01/PLAT-01/PRIV-01..04 status surface) is left for the orchestrator's verifier / roadmap-update pass.*
+*Last updated: 2026-06-15 — Phase 4 discussion added VOICE-07 (uninstall installed voices + clean partial downloads, UI-only), per user request during context gathering. Coverage 42 → 43, all mapped.*
+*Previously: 2026-06-01 — Phase 3 discussion expanded the native-OS voice-picker scope: added NATIVE-05 (voice attributes + language/quality filter + name search, Phase 3) and VOICE-06 (user-editable/custom labels + cross-engine browser, Phase 4). Coverage 40 → 42, all mapped.*
+*Previously: 2026-05-31 after Phase 01 plan 04 completion (PRIV-02 satisfied; PRIV-04 fully complete across Upload + News halves). All four Phase-01 plans implemented; phase row close-out left for the orchestrator's verifier / roadmap-update pass.*
