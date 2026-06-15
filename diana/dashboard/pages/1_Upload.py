@@ -93,6 +93,21 @@ def _engine_readiness(engine_name: str) -> tuple[bool, str]:
         if install_state.heavy_engine_installed("f5"):
             return True, "Ready — F5-TTS is installed."
         return False, "~1.5 GB+ (torch + model), install F5 in Settings ▸ Voices."
+    if engine_name == "fish":
+        # Heavy opt-in engine (HEAVY-03), GPU-gated (D-10): the torch-free nvidia-smi gate
+        # decides availability FIRST — on a machine without a capable NVIDIA GPU the badge
+        # surfaces the VRAM reason (the same shown-but-disabled reason as Settings), so the
+        # user sees WHY Fish is unavailable rather than it being hidden. ``gpu_probe`` shells
+        # nvidia-smi (NO torch import — ENGINE-01); ``install_state`` is a filesystem probe.
+        # The Convert fail-fast (heavy_engine_failfast) + the engine-level GPU gate both
+        # still gate an actual job (D-16/D-10).
+        from diana.tts import gpu_probe
+        ok_gpu, _vram, reason = gpu_probe.capable_nvidia_gpu()
+        if not ok_gpu:
+            return False, reason
+        if install_state.heavy_engine_installed("fish"):
+            return True, "Ready — Fish S2 Pro installed"
+        return False, "Large download (torch + model), install in Settings ▸ Voices"
     return False, ""
 
 
