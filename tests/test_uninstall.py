@@ -39,6 +39,7 @@ _IN_USE_AVAILABLE = _voice_in_use is not None
 
 _uninstall_voice = None
 for _modname, _attr in (
+    ("diana.tts.install_state", "uninstall_piper_voice"),
     ("diana.tts.install_state", "uninstall_voice"),
     ("diana.tts.registry", "uninstall_voice"),
     ("diana.downloads.downloader", "uninstall_voice"),
@@ -76,7 +77,10 @@ def _make_db(tmp_path):
 def _call_in_use(db, engine, voice_id):
     """Call the in-use predicate tolerant of its (planner-chosen) signature.
 
-    Supports either ``(db_path, engine, voice_id)`` or ``(db_path, voice_id)``.
+    Supports either ``(db_path, engine, voice_id)`` or ``(db_path, voice_id)``. The
+    Plan-04 contract returns a human REASON STRING (truthy) when the voice is in use
+    and ``None`` when it is free (D-17 needs a "switch first" message), so callers
+    assert on truthiness, not a strict ``is True``/``is False``.
     """
     params = inspect.signature(_voice_in_use).parameters
     if len(params) >= 3:
@@ -89,23 +93,29 @@ def _call_in_use(db, engine, voice_id):
     not _IN_USE_AVAILABLE, reason="in-use-block predicate implemented in Plan 04"
 )
 def test_in_use_block(tmp_path):
-    """A voice used by a non-terminal job OR a per-engine default is in-use."""
+    """A voice used by a non-terminal job OR a per-engine default is in-use.
+
+    The predicate returns a human reason string (truthy) when blocked and ``None``
+    when free — the D-17 "switch first" message the UI surfaces (VOICE-07).
+    """
     db = _make_db(tmp_path)
 
-    # Arm 1: a PENDING (non-terminal) job references the voice.
+    # Arm 1: a PENDING (non-terminal) job references the voice -> a reason string.
     create_job(db, Job(
         id="job-pending", filename="a.pdf", file_type="pdf",
         upload_path="/tmp/a.pdf", status=JobStatus.PENDING,
         tts_engine="piper", tts_voice="en_US-amy-medium",
     ))
-    assert _call_in_use(db, "piper", "en_US-amy-medium") is True
+    _reason = _call_in_use(db, "piper", "en_US-amy-medium")
+    assert isinstance(_reason, str) and _reason, "a pending-job voice is blocked with a reason"
 
     # Arm 2: stored as the per-engine default voice (tts.default_voice.<engine>).
     set_setting(db, "tts.default_voice.piper", "en_GB-alan-medium")
-    assert _call_in_use(db, "piper", "en_GB-alan-medium") is True
+    _reason = _call_in_use(db, "piper", "en_GB-alan-medium")
+    assert isinstance(_reason, str) and _reason, "a per-engine default voice is blocked with a reason"
 
-    # Not in use: no job references it and it is no engine's default.
-    assert _call_in_use(db, "piper", "en_US-lessac-medium") is False
+    # Not in use: no job references it and it is no engine's default -> None (free).
+    assert _call_in_use(db, "piper", "en_US-lessac-medium") is None
 
     # A voice only referenced by a TERMINAL (completed) job is NOT in use.
     create_job(db, Job(
@@ -113,7 +123,7 @@ def test_in_use_block(tmp_path):
         upload_path="/tmp/b.pdf", status=JobStatus.COMPLETED,
         tts_engine="piper", tts_voice="en_US-lessac-medium",
     ))
-    assert _call_in_use(db, "piper", "en_US-lessac-medium") is False
+    assert _call_in_use(db, "piper", "en_US-lessac-medium") is None
 
 
 # --- VOICE-07: an unreferenced voice uninstalls (deletes the pair) -----------

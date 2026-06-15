@@ -61,3 +61,56 @@ def kokoro_model_installed() -> bool:
     md = paths.model_dir()
     onnx = any((md / n).exists() for n in _KOKORO_ONNX_VARIANTS)
     return onnx and (md / _KOKORO_VOICES_BIN).exists()
+
+
+def voice_in_use(db_path: str, engine: str, voice_id: str) -> str | None:
+    """Human reason a voice may NOT be uninstalled, else ``None`` (D-17/VOICE-07).
+
+    The up-front protective block on top of the Phase-3 selection-time backstop
+    (``registry.resolve_default_voice``): refuse to delete a voice that something
+    still needs, and tell the user WHAT needs it so they can switch first. A voice is
+    in use when EITHER
+
+      (a) it is the ``tts_voice`` of any NON-TERMINAL job — a pending/in-flight job
+          (anything whose status is not the terminal ``COMPLETED``/``FAILED``) still
+          needs its voice file when the worker reaches it; or
+      (b) it is the stored ``tts.default_voice.<engine>`` per-engine default — the
+          remembered choice both pages preselect.
+
+    Returns a short reason string (truthy) when blocked, ``None`` when free to remove.
+    A terminal job's voice (a finished/failed conversion) does NOT block — its audio
+    is already produced. Cheap-probe lane (DB read only — NO engine SDK import,
+    ENGINE-01); ``database`` is imported lazily inside the function so this module
+    stays import-light.
+    """
+    from diana.database import get_setting, list_jobs
+    from diana.models import JobStatus
+
+    terminal = {JobStatus.COMPLETED, JobStatus.FAILED}
+    for job in list_jobs(db_path):
+        if job.tts_voice == voice_id and job.status not in terminal:
+            return "in use by a pending or in-progress job"
+    if get_setting(db_path, f"tts.default_voice.{engine}", None) == voice_id:
+        return f"set as the {engine} default voice"
+    return None
+
+
+def uninstall_piper_voice(voice_id: str) -> int:
+    """Delete an installed Piper voice's files from the cache; return freed bytes (D-16).
+
+    Removes ``{voice_id}.onnx`` and its sibling ``{voice_id}.onnx.json`` from
+    ``paths.model_dir()`` and returns the total bytes freed (so the UI can show the
+    reclaimed space before/after the confirm — D-16). Scoped to ``model_dir()`` ONLY:
+    the destinations are basename-joined Paths under the per-user cache, never a
+    user-supplied absolute path (T-04-FILE), and each unlink uses
+    ``missing_ok=True`` — mirroring the ``database.delete_job`` cleanup idiom. Pure
+    filesystem op: NO onnxruntime/piper import (ENGINE-01).
+    """
+    md = paths.model_dir()
+    freed = 0
+    for name in (f"{voice_id}.onnx", f"{voice_id}.onnx.json"):
+        target = md / name
+        if target.exists():
+            freed += target.stat().st_size
+        target.unlink(missing_ok=True)
+    return freed
