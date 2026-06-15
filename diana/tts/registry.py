@@ -8,9 +8,11 @@ _ENGINE_CLASSES = {
 }
 
 # The heavy, opt-in neural engines (Phase 5). They badge/gate/fail-fast cheaply
-# here (filesystem + nvidia-smi only), but are NOT added to list_engines() or
-# _get_engine_class in this slice — each engine joins those seams in its OWN wave
-# so all_engine_voices never tries to import a not-yet-built engine (D-17).
+# here (filesystem + nvidia-smi only). They are LISTED in list_engines() (D-17: they
+# surface in the cross-engine browser like kokoro/piper) but only the engines whose
+# class has actually been built can enumerate voices — all_engine_voices skips an
+# engine whose class is not importable yet, so listing f5/fish before their slices
+# land never crashes the live cross-engine browser (Rule-2 resilience).
 _HEAVY_ENGINES = {"orpheus", "f5", "fish"}
 
 # Whether each engine's tokenizer requires pure ASCII. Static name->bool map,
@@ -35,6 +37,11 @@ def _get_engine_class(engine_name: str):
     if engine_name == "native_os":
         from diana.tts.native_os_engine import NativeOSEngine
         return NativeOSEngine
+    if engine_name == "orpheus":
+        # Lazy: orpheus_engine's module top is heavy-import-free (ENGINE-01), so this
+        # import does NOT pull orpheus_cpp/llama_cpp onto the cheap enumeration path.
+        from diana.tts.orpheus_engine import OrpheusEngine
+        return OrpheusEngine
     cls = _ENGINE_CLASSES.get(engine_name)
     if cls is None:
         raise ValueError(f"Unknown TTS engine: {engine_name}")
@@ -56,6 +63,11 @@ def create_engine(config: DianaConfig, engine_name: str | None = None):
     elif engine_name == "native_os":
         from diana.tts.native_os_engine import NativeOSEngine
         engine = NativeOSEngine()   # no config — OS-provided voices
+    elif engine_name == "orpheus":
+        # No config model paths — Orpheus self-locates its venv + weights via paths.
+        # initialize() fail-fasts (D-16) when the engine is not installed.
+        from diana.tts.orpheus_engine import OrpheusEngine
+        engine = OrpheusEngine()
     else:
         raise ValueError(f"Unknown TTS engine: {engine_name}")
 
@@ -162,7 +174,16 @@ def all_engine_voices(config: DianaConfig | None = None) -> list[tuple[str, TTSV
     """
     pairs: list[tuple[str, TTSVoice]] = []
     for engine_name in list_engines():
-        for voice in get_engine_voices(engine_name, config):
+        try:
+            voices = get_engine_voices(engine_name, config)
+        except Exception:  # noqa: BLE001
+            # A heavy engine can be LISTED (D-17) before its engine class lands in its
+            # own wave (f5/fish until 05-05/05-07); enumerating its voices then raises
+            # (no class to read VOICES from). Skip it so the cross-engine browser never
+            # crashes on a not-yet-built engine — it simply contributes no voices until
+            # its slice ships. Never imports a heavy SDK to make this call.
+            continue
+        for voice in voices:
             pairs.append((engine_name, voice))
     return pairs
 
@@ -225,8 +246,17 @@ def resolve_engine_name(saved: str) -> str:
 
 
 def list_engines() -> list[str]:
-    """Return names of all available TTS engines (native_os first — it is the default)."""
-    return ["native_os", "kokoro", "piper"]
+    """Return names of all available TTS engines (native_os first — it is the default).
+
+    The light engines come first (native_os default, then the model engines), followed
+    by the heavy opt-in neural engines (orpheus/f5/fish — D-17) so they surface in the
+    cross-engine browser and the Upload picker like any other engine. A heavy engine
+    selected before it is installed is caught up front by ``heavy_engine_failfast``
+    (D-16) on the Upload path, and skipped by ``all_engine_voices`` if its class is not
+    built yet — so listing it never crashes a job or the browser. NO heavy SDK import
+    here (this is a static name list).
+    """
+    return ["native_os", "kokoro", "piper", "orpheus", "f5", "fish"]
 
 
 def engine_is_ascii_only(engine_name: str) -> bool:

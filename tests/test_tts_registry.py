@@ -38,9 +38,14 @@ class TestEngineIsAsciiOnly:
 
 
 class TestListEngines:
-    def test_local_only(self):
-        # native_os first (it is the default — D-01), then the two model engines.
-        assert list_engines() == ["native_os", "kokoro", "piper"]
+    def test_local_engines_first_then_heavy(self):
+        # native_os first (it is the default — D-01), then the two light model engines,
+        # then the heavy opt-in neural engines (orpheus/f5/fish register in
+        # list_engines() so they surface in the cross-engine browser — Phase 5, D-17).
+        engines = list_engines()
+        assert engines[:3] == ["native_os", "kokoro", "piper"]
+        for heavy in ("orpheus", "f5", "fish"):
+            assert heavy in engines
 
     def test_removed_engines_absent(self):
         engines = list_engines()
