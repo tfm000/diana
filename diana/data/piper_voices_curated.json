@@ -1,0 +1,343 @@
+{
+  "_provenance": {
+    "source": "https://huggingface.co/rhasspy/piper-voices/raw/main/voices.json",
+    "repo": "rhasspy/piper-voices",
+    "commit": "b710b0ba0740da88dc36e1ab8fa6b310d43a3a48",
+    "last_modified": "2026-05-15T17:21:53.000Z",
+    "snapshot_date": "2026-06-15",
+    "note": "Curated best-per-language Piper subset (D-01/D-02). Show-all + Refresh catalog expose the full live manifest. Re-verify voice ids before shipping if stale (Pitfall 6)."
+  },
+  "voices": {
+    "en_US-lessac-medium": {
+      "key": "en_US-lessac-medium",
+      "name": "lessac",
+      "language": {
+        "code": "en_US",
+        "family": "en",
+        "region": "US",
+        "name_native": "English",
+        "name_english": "English",
+        "country_english": "United States"
+      },
+      "quality": "medium",
+      "num_speakers": 1,
+      "speaker_id_map": {},
+      "files": {
+        "en/en_US/lessac/medium/en_US-lessac-medium.onnx": {
+          "size_bytes": 63201294,
+          "md5_digest": "2fc642b535197b6305c7c8f92dc8b24f"
+        },
+        "en/en_US/lessac/medium/en_US-lessac-medium.onnx.json": {
+          "size_bytes": 4885,
+          "md5_digest": "c1f2b7bddefe113f3255ff9ef234cfd3"
+        },
+        "en/en_US/lessac/medium/MODEL_CARD": {
+          "size_bytes": 351,
+          "md5_digest": "42f2dd4a98149e12fc70b301d9579dfd"
+        }
+      },
+      "aliases": [
+        "en-us-lessac-medium"
+      ]
+    },
+    "en_US-amy-medium": {
+      "key": "en_US-amy-medium",
+      "name": "amy",
+      "language": {
+        "code": "en_US",
+        "family": "en",
+        "region": "US",
+        "name_native": "English",
+        "name_english": "English",
+        "country_english": "United States"
+      },
+      "quality": "medium",
+      "num_speakers": 1,
+      "speaker_id_map": {},
+      "files": {
+        "en/en_US/amy/medium/en_US-amy-medium.onnx": {
+          "size_bytes": 63201294,
+          "md5_digest": "778d28aeb95fcdf8a882344d9df142fc"
+        },
+        "en/en_US/amy/medium/en_US-amy-medium.onnx.json": {
+          "size_bytes": 4882,
+          "md5_digest": "7f37dadb26340c90ebc8088e0b252310"
+        },
+        "en/en_US/amy/medium/MODEL_CARD": {
+          "size_bytes": 281,
+          "md5_digest": "6fca05ee5bfe8b28211b88b86b47e822"
+        }
+      },
+      "aliases": []
+    },
+    "en_US-ryan-medium": {
+      "key": "en_US-ryan-medium",
+      "name": "ryan",
+      "language": {
+        "code": "en_US",
+        "family": "en",
+        "region": "US",
+        "name_native": "English",
+        "name_english": "English",
+        "country_english": "United States"
+      },
+      "quality": "medium",
+      "num_speakers": 1,
+      "speaker_id_map": {},
+      "files": {
+        "en/en_US/ryan/medium/en_US-ryan-medium.onnx": {
+          "size_bytes": 63201294,
+          "md5_digest": "8f06d3aff8ded5a7f13f907e6bec32ac"
+        },
+        "en/en_US/ryan/medium/en_US-ryan-medium.onnx.json": {
+          "size_bytes": 4883,
+          "md5_digest": "f173a2b5202b3e4128ccc3ed8195306c"
+        },
+        "en/en_US/ryan/medium/MODEL_CARD": {
+          "size_bytes": 306,
+          "md5_digest": "79d9200481a9dcabfa1803cb9e31c28a"
+        }
+      },
+      "aliases": [
+        "en-us-ryan-medium"
+      ]
+    },
+    "en_GB-alan-medium": {
+      "key": "en_GB-alan-medium",
+      "name": "alan",
+      "language": {
+        "code": "en_GB",
+        "family": "en",
+        "region": "GB",
+        "name_native": "English",
+        "name_english": "English",
+        "country_english": "Great Britain"
+      },
+      "quality": "medium",
+      "num_speakers": 1,
+      "speaker_id_map": {},
+      "files": {
+        "en/en_GB/alan/medium/en_GB-alan-medium.onnx": {
+          "size_bytes": 63201294,
+          "md5_digest": "8f6b35eeb8ef6269021c6cb6d2414c9b"
+        },
+        "en/en_GB/alan/medium/en_GB-alan-medium.onnx.json": {
+          "size_bytes": 4888,
+          "md5_digest": "b11d9afd0a8f5372c42a52fbd6e021d4"
+        },
+        "en/en_GB/alan/medium/MODEL_CARD": {
+          "size_bytes": 320,
+          "md5_digest": "24a2232470ca1be071debf53c984666e"
+        }
+      },
+      "aliases": []
+    },
+    "de_DE-thorsten-medium": {
+      "key": "de_DE-thorsten-medium",
+      "name": "thorsten",
+      "language": {
+        "code": "de_DE",
+        "family": "de",
+        "region": "DE",
+        "name_native": "Deutsch",
+        "name_english": "German",
+        "country_english": "Germany"
+      },
+      "quality": "medium",
+      "num_speakers": 1,
+      "speaker_id_map": {},
+      "files": {
+        "de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx": {
+          "size_bytes": 63201294,
+          "md5_digest": "a129b00fb3078df43c96bab6c94535c0"
+        },
+        "de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx.json": {
+          "size_bytes": 4819,
+          "md5_digest": "843a7bd7272724f750534dd5a26d1aad"
+        },
+        "de/de_DE/thorsten/medium/MODEL_CARD": {
+          "size_bytes": 285,
+          "md5_digest": "e84cf8b09957fccceb068a3c1664d0f3"
+        }
+      },
+      "aliases": []
+    },
+    "fr_FR-siwis-medium": {
+      "key": "fr_FR-siwis-medium",
+      "name": "siwis",
+      "language": {
+        "code": "fr_FR",
+        "family": "fr",
+        "region": "FR",
+        "name_native": "Français",
+        "name_english": "French",
+        "country_english": "France"
+      },
+      "quality": "medium",
+      "num_speakers": 1,
+      "speaker_id_map": {},
+      "files": {
+        "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx": {
+          "size_bytes": 63201294,
+          "md5_digest": "20e876e8c839e9b11a26085858f2300c"
+        },
+        "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json": {
+          "size_bytes": 4875,
+          "md5_digest": "a407e7e6901feb79c2ea2a5466076cce"
+        },
+        "fr/fr_FR/siwis/medium/MODEL_CARD": {
+          "size_bytes": 284,
+          "md5_digest": "2b9ea48b15e9e1fd25f95b415caaf66f"
+        }
+      },
+      "aliases": [
+        "fr-siwis-medium"
+      ]
+    },
+    "es_ES-davefx-medium": {
+      "key": "es_ES-davefx-medium",
+      "name": "davefx",
+      "language": {
+        "code": "es_ES",
+        "family": "es",
+        "region": "ES",
+        "name_native": "Español",
+        "name_english": "Spanish",
+        "country_english": "Spain"
+      },
+      "quality": "medium",
+      "num_speakers": 1,
+      "speaker_id_map": {},
+      "files": {
+        "es/es_ES/davefx/medium/es_ES-davefx-medium.onnx": {
+          "size_bytes": 63201294,
+          "md5_digest": "dc515cd4ecc5f6f72fe14a941188fc9c"
+        },
+        "es/es_ES/davefx/medium/es_ES-davefx-medium.onnx.json": {
+          "size_bytes": 4817,
+          "md5_digest": "dd157b5eaf6930bf949cf416d9a9307a"
+        },
+        "es/es_ES/davefx/medium/MODEL_CARD": {
+          "size_bytes": 276,
+          "md5_digest": "980f3ebe5987b10488da3a7f4a462970"
+        }
+      },
+      "aliases": []
+    },
+    "it_IT-riccardo-x_low": {
+      "key": "it_IT-riccardo-x_low",
+      "name": "riccardo",
+      "language": {
+        "code": "it_IT",
+        "family": "it",
+        "region": "IT",
+        "name_native": "Italiano",
+        "name_english": "Italian",
+        "country_english": "Italy"
+      },
+      "quality": "x_low",
+      "num_speakers": 1,
+      "speaker_id_map": {},
+      "files": {
+        "it/it_IT/riccardo/x_low/it_IT-riccardo-x_low.onnx": {
+          "size_bytes": 28130791,
+          "md5_digest": "2c564b67f6bfaf3ad02d28ab528929b8"
+        },
+        "it/it_IT/riccardo/x_low/it_IT-riccardo-x_low.onnx.json": {
+          "size_bytes": 4161,
+          "md5_digest": "ed24cd550b79acbdc337e519849e9636"
+        },
+        "it/it_IT/riccardo/x_low/MODEL_CARD": {
+          "size_bytes": 260,
+          "md5_digest": "3e70f29ab998ac0380edc0cec7395e80"
+        }
+      },
+      "aliases": [
+        "it-riccardo_fasol-x-low"
+      ]
+    },
+    "nl_NL-mls-medium": {
+      "key": "nl_NL-mls-medium",
+      "name": "mls",
+      "language": {
+        "code": "nl_NL",
+        "family": "nl",
+        "region": "NL",
+        "name_native": "Nederlands",
+        "name_english": "Dutch",
+        "country_english": "Netherlands"
+      },
+      "quality": "medium",
+      "num_speakers": 52,
+      "speaker_id_map": {
+        "2450": 0,
+        "1724": 1,
+        "1666": 2,
+        "5809": 3,
+        "496": 4,
+        "2506": 5,
+        "7432": 6,
+        "3619": 7,
+        "4429": 8,
+        "3798": 9,
+        "12500": 10,
+        "10587": 11,
+        "2951": 12,
+        "1775": 13,
+        "9861": 14,
+        "880": 15,
+        "3034": 16,
+        "2825": 17,
+        "5438": 18,
+        "3245": 19,
+        "4396": 20,
+        "11290": 21,
+        "11936": 22,
+        "6916": 23,
+        "10294": 24,
+        "10079": 25,
+        "7588": 26,
+        "7579": 27,
+        "123": 28,
+        "3024": 29,
+        "960": 30,
+        "10984": 31,
+        "2792": 32,
+        "7723": 33,
+        "4174": 34,
+        "2981": 35,
+        "5764": 36,
+        "6513": 37,
+        "7884": 38,
+        "6697": 39,
+        "12749": 40,
+        "11157": 41,
+        "2239": 42,
+        "10879": 43,
+        "1085": 44,
+        "8480": 45,
+        "8331": 46,
+        "6282": 47,
+        "10632": 48,
+        "2602": 49,
+        "5367": 50,
+        "11472": 51
+      },
+      "files": {
+        "nl/nl_NL/mls/medium/nl_NL-mls-medium.onnx": {
+          "size_bytes": 76584246,
+          "md5_digest": "f1d4b1452ccfdac24be72085b2b6b55c"
+        },
+        "nl/nl_NL/mls/medium/nl_NL-mls-medium.onnx.json": {
+          "size_bytes": 5856,
+          "md5_digest": "1915807d7cb85274ba957846370fff39"
+        },
+        "nl/nl_NL/mls/medium/MODEL_CARD": {
+          "size_bytes": 225,
+          "md5_digest": "6e5d961780907a4d7746eada893b8eca"
+        }
+      },
+      "aliases": []
+    }
+  }
+}

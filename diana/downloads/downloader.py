@@ -97,11 +97,18 @@ def has_space(target: Path, needed_bytes: int, margin: float = 1.10) -> tuple[bo
     return free >= int(needed_bytes * margin), free
 
 
-def clean_partials(directory: Path) -> int:
+def clean_partials(directory: "Path | None" = None) -> int:
     """Remove every orphaned ``*.part`` file in ``directory``; return the count (D-18).
 
+    ``directory`` defaults to the per-user model cache (``paths.model_dir()``) so the
+    bulk "Clean up partial downloads" action (D-18) is a zero-arg call; pass an
+    explicit directory to clean any other location. ``paths`` is imported lazily so
+    this engine-agnostic module keeps a minimal top-of-file import surface (D-19).
     Mirrors the ``unlink(missing_ok=True)`` cleanup idiom in ``database.delete_job``.
     """
+    if directory is None:
+        from diana import paths
+        directory = paths.model_dir()
     removed = 0
     for p in Path(directory).glob("*.part"):
         p.unlink(missing_ok=True)

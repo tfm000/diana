@@ -44,8 +44,21 @@ dev = ["pytest>=7.0", "pytest-asyncio>=0.23.0"]
 [project.scripts]
 diana = "run:main"
 
+[tool.setuptools.packages.find]
+# Explicit discovery so the data-only package (no .py beyond __init__) is collected.
+include = ["diana*"]
+
+[tool.setuptools.package-data]
+# Ship the bundled curated Piper manifest (D-02) and the curated preview samples
+# (diana/data/samples/*, added in Plan 04). The Phase-6 packager MUST verify these
+# land in the PyInstaller bundle (RESEARCH Runtime State Inventory).
+diana = ["data/*.json", "data/samples/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 markers = ["network: hits real network endpoints (HF/GitHub); excluded by default"]
+# Exclude the opt-in network smoke from the default run; opt in with `-m network`
+# (override the deselect with `-m "network"` which replaces this expression).
+addopts = "-m 'not network'"
