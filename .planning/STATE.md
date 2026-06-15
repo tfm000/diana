@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: "Phase 03 plan 03-05 implementation complete (Windows WinRT branch, NATIVE-02) — macOS-testable surface done + committed; Task 3 blocking Windows UAT DEFERRED (user-approved, no Windows box) to 03-05-WINDOWS-UAT-DEFERRED.md"
-last_updated: "2026-06-15T10:55:39.000Z"
+status: completed
+stopped_at: Phase 4 context gathered (Engine Management & Voice Catalog — engine-agnostic management UX + generic download/cache layer proven via Piper+Kokoro; uninstall added)
+last_updated: "2026-06-15T11:39:56.031Z"
 last_activity: 2026-06-15
 progress:
   total_phases: 7
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 13
   completed_plans: 13
-  percent: 100
+  percent: 43
 ---
 
 # Project State
@@ -138,6 +138,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-15
-Stopped at: Phase 03 plan 03-05 IMPLEMENTATION COMPLETE — Tasks 1-2 (win32-gated winrt deps + WinRT branch with mocked tests) done + committed (4cce0cf, b0eaaf2); full suite 379 passed; macOS install/import constraint held + verified. Task 3 blocking Windows WinRT UAT DEFERRED (user-approved, no Windows box) — self-contained checklist at 03-05-WINDOWS-UAT-DEFERRED.md; all 5 Phase 03 plans now implemented with 1 blocking Windows UAT carried forward. ROADMAP/REQUIREMENTS untouched by this plan.
-Resume file: .planning/phases/03-native-os-tts-new-default/03-05-WINDOWS-UAT-DEFERRED.md (run on a Windows box, then update 03-05-SUMMARY.md + close the Deferred Items row)
+Last session: 2026-06-15T11:39:56.024Z
+Stopped at: Phase 4 context gathered (Engine Management & Voice Catalog — engine-agnostic management UX + generic download/cache layer proven via Piper+Kokoro; uninstall added)
+Resume file: .planning/phases/04-engine-management-voice-catalog/04-CONTEXT.md
