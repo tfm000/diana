@@ -129,13 +129,21 @@ class F5Engine:
         """Map a voice id to its ``(ref_file, ref_text)`` clone reference (import-light).
 
         For the bundled default (``f5_default``) this returns the package-resource clip
-        path + its shipped exact transcript (D-15). Custom-voice ids are added in 05-06.
-        An unknown id raises ``ValueError`` so a stale selection fails legibly rather than
-        synthesizing silence.
+        path + its shipped exact transcript (D-15). Any OTHER id is a saved custom voice
+        (D-14): it is resolved through ``custom_voices.custom_voice_ref`` to that voice's
+        ``custom_voices_dir()/<id>.wav`` clip + ``<id>.txt`` transcript — the one shared
+        engine-agnostic pool (D-11). An id with no clip on disk raises ``ValueError`` so a
+        stale selection fails legibly rather than synthesizing silence. ``custom_voices``
+        is imported lazily so this stays import-light (NO torch — D-17).
         """
         if voice == _DEFAULT_VOICE_ID:
             return str(_bundled_default_clip()), _bundled_default_transcript()
-        raise ValueError(f"Unknown F5 voice: {voice!r}")
+        from diana.tts import custom_voices
+
+        try:
+            return custom_voices.custom_voice_ref(voice)
+        except ValueError as e:
+            raise ValueError(f"Unknown F5 voice: {voice!r}") from e
 
     async def synthesize(
         self, text: str, voice: str = _DEFAULT_VOICE_ID, speed: float = 1.0
@@ -190,7 +198,22 @@ class F5Engine:
             Path(out).unlink(missing_ok=True)
 
     def list_voices(self) -> list[TTSVoice]:
-        return list(self.VOICES)
+        """The bundled default (D-15) MERGED with every saved custom voice (D-14).
+
+        F5 has no baked-in voices: it surfaces the bundled license-clean default plus the
+        shared engine-agnostic Custom Voices pool (D-11), deduped by id. ``custom_voices``
+        is a cheap filesystem/``app_settings`` read imported lazily, so enumeration stays
+        import-light (NO torch — D-17). A missing/empty pool just yields the default.
+        """
+        from diana.tts import custom_voices
+
+        voices = list(self.VOICES)
+        seen = {v.id for v in voices}
+        for v in custom_voices.list_custom_voices():
+            if v.id not in seen:
+                seen.add(v.id)
+                voices.append(v)
+        return voices
 
     def default_voice(self) -> str:
         return _DEFAULT_VOICE_ID
