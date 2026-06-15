@@ -16,7 +16,7 @@ from diana.dashboard.voice_cache import cached_voices as _cached_voices
 from diana.dashboard.voice_cache import clear_voice_cache
 from diana.database import get_setting, set_setting
 from diana.downloads.downloader import clean_partials, download_file, has_space
-from diana.tts import catalog, custom_voices, heavy_install, install_state
+from diana.tts import catalog, custom_voices, gpu_probe, heavy_install, install_state
 from diana.tts.kokoro_engine import (
     KOKORO_DEFAULT_VARIANT,
     KOKORO_MODEL_VARIANTS,
@@ -24,6 +24,7 @@ from diana.tts.kokoro_engine import (
 )
 from diana.tts.orpheus_engine import orpheus_install_spec
 from diana.tts.f5_engine import f5_install_spec
+from diana.tts.fish_engine import fish_install_spec
 from diana.tts.native_os_engine import (
     filter_voices,
     order_by_quality,
@@ -879,7 +880,9 @@ def _render_heavy_license_gate(engine: str, license: dict) -> bool:
     return False
 
 
-def _render_heavy_engine_row(engine: str, spec, license: dict | None = None) -> None:
+def _render_heavy_engine_row(
+    engine: str, spec, license: dict | None = None, gpu_gate: tuple | None = None
+) -> None:
     """A heavy opt-in engine install row: footprint confirm + disk pre-check + 2-phase.
 
     The generic heavy-engine row F5/Fish reuse (05-04 wired Orpheus; this slice adds the
@@ -887,6 +890,12 @@ def _render_heavy_engine_row(engine: str, spec, license: dict | None = None) -> 
     state model, ``_can_spawn_download`` guard, the ``@st.fragment`` progress poller) but
     swapping the download substrate for the 05-03 provisioner:
 
+      * D-10 SHOWN-BUT-DISABLED GPU gate (when ``gpu_gate`` is given): ``gpu_gate`` is the
+        ``capable_nvidia_gpu()`` result ``(ok, vram, reason)``. When it is NOT ok, the row
+        is SHOWN (title + a DISABLED "Install" button + the reason caption) but NO
+        license/footprint/Install control appears — the user sees WHY Fish is unavailable,
+        it is never hidden (the reconciled HEAVY-03/SC#3 wording). When ok (or ``gpu_gate``
+        is None — Orpheus/F5), the row falls through to the normal license + install flow.
       * D-08 accept-once NC-license gate (when ``license`` is given): the disclosure +
         "I accept" is shown BEFORE any install control or download, persisted so a
         re-install never re-prompts. Until accepted, NO footprint/disk/Install appears
@@ -902,7 +911,8 @@ def _render_heavy_engine_row(engine: str, spec, license: dict | None = None) -> 
         step label then the Phase-B weights step (the ``phase``/``step`` extension above).
       * when installed, a Ready badge + the two-step engine uninstall control.
 
-    Cheap by design: a filesystem install probe + a static spec — NO heavy SDK import.
+    Cheap by design: a filesystem install probe + a static spec + the torch-free GPU gate
+    result passed in by the caller — NO heavy SDK import.
     """
     installed = install_state.heavy_engine_installed(engine)
     key = f"__{engine}_install__"
@@ -911,6 +921,25 @@ def _render_heavy_engine_row(engine: str, spec, license: dict | None = None) -> 
     model_mb = spec.weights_bytes / 1e6
     total_bytes = spec.deps_bytes + spec.weights_bytes
     total_mb = total_bytes / 1e6
+
+    # D-10: shown-but-disabled GPU gate. When a gpu_gate is required and NOT ok (and the
+    # engine is not already installed), render the row SHOWN with a DISABLED Install + the
+    # reason — never hidden, and NO license/footprint/Install flow below. (An ALREADY
+    # installed engine is never disabled here — it keeps its Ready badge + uninstall so a
+    # user who installed on a capable box, then moved the install, can still reclaim space.)
+    gpu_ok = gpu_gate[0] if gpu_gate is not None else True
+    if gpu_gate is not None and not gpu_ok and not installed:
+        gpu_reason = (gpu_gate[2] if len(gpu_gate) > 2 else "") or (
+            "requires a capable GPU (~12+ GB VRAM)"
+        )
+        with st.container(border=True):
+            info_col, action_col = st.columns([3, 1])
+            with info_col:
+                st.markdown(f"**{label}** — neural voices, runs on-device (opt-in)")
+                st.caption(f"Unavailable — {gpu_reason}.")
+            with action_col:
+                st.button("Install", key=f"{engine}_install_disabled", disabled=True)
+        return
 
     with st.container(border=True):
         info_col, action_col = st.columns([3, 1])
@@ -1152,6 +1181,21 @@ def _cross_engine_badge(engine: str, voice) -> None:
             st.success("Ready · F5-TTS installed", icon="✅")
         else:
             st.caption("~1.5 GB+, downloads on install — set up in Engine models above")
+        return
+    if engine == "fish":
+        # Heavy opt-in engine (HEAVY-03), GPU-gated (D-10): the torch-free nvidia-smi gate
+        # decides availability FIRST, so on a GPU-less box the browser row shows WHY Fish is
+        # unavailable (the VRAM reason) rather than offering an install it can't use. Then
+        # the cheap filesystem probe of the shared torch venv — NO torch/fish_speech import
+        # on the badge path (ENGINE-01/D-17). The voice still lists (browsing is
+        # GPU-independent); only install/use is gated.
+        ok_gpu, _vram, reason = gpu_probe.capable_nvidia_gpu()
+        if not ok_gpu:
+            st.caption(f"Unavailable — {reason}.")
+        elif install_state.heavy_engine_installed("fish"):
+            st.success("Ready · Fish installed", icon="✅")
+        else:
+            st.caption("~large, downloads on install — set up in Engine models above")
         return
     st.caption("")  # unknown engine — no badge
 
@@ -1758,6 +1802,25 @@ with tab_voices:
             ),
             "url": "https://github.com/SWivid/F5-TTS",
         },
+    )
+    # Fish Audio S2 Pro (HEAVY-03): GPU-gated (D-10) AND non-commercial (D-08). The row is
+    # SHOWN-BUT-DISABLED with the VRAM reason on a machine without a capable NVIDIA GPU
+    # (gpu_probe.capable_nvidia_gpu — torch-free nvidia-smi); behind the GPU gate it shows
+    # the accept-once Fish Audio Research License / CC-BY-NC-SA-4.0 disclosure before any
+    # download (the F5 gate mechanism, license.accepted.fish). The spec comes from
+    # fish_engine (git+SHA pin), so no repo IDs / SHA are hardcoded here; nothing heavy is
+    # imported until Install runs. This completes the three-engine lineup (D-01).
+    _render_heavy_engine_row(
+        "fish",
+        fish_install_spec(),
+        license={
+            "text": (
+                "Fish S2 Pro weights are released under the Fish Audio Research License "
+                "/ CC-BY-NC-SA-4.0 (non-commercial / personal use only)."
+            ),
+            "url": "https://huggingface.co/fishaudio/s2-pro",
+        },
+        gpu_gate=gpu_probe.capable_nvidia_gpu(),
     )
 
     # -----------------------------------------------------------------------
