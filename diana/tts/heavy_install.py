@@ -98,11 +98,28 @@ _BUILTIN_SPECS: dict[str, HeavyInstallSpec] = {
             "@e5e292632cb11e7a27b2b7487f58f612bc101e13",
         ],
         extra_index=None,
-        prefetch_argv=["-m", "fish_speech", "--prefetch"],
+        # Populated below after the dict is constructed (WR-04): fish-speech ships no
+        # __main__ that accepts --prefetch, so the correct form is the bundled
+        # fish_worker.py script, matching fish_install_spec() in fish_engine.py.
+        prefetch_argv=[],
         deps_bytes=int(3.0 * _GB),
         weights_bytes=int(4.0 * _GB),
     ),
 }
+
+# WR-04: fill in the fish prefetch_argv now that paths is importable.  The form
+# must be the bundled worker-script path + --prefetch (same as fish_install_spec()
+# in fish_engine.py), NOT "-m fish_speech" which assumes a __main__ fish-speech
+# never ships. Populated post-dict so paths is imported lazily (D-17).
+def _init_fish_prefetch_argv() -> None:
+    from diana import paths as _paths
+
+    _BUILTIN_SPECS["fish"].prefetch_argv = [
+        str(_paths.heavy_worker("fish_worker.py")), "--prefetch",
+    ]
+
+
+_init_fish_prefetch_argv()
 
 
 def _is_win() -> bool:
