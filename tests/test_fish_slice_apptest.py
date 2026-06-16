@@ -317,15 +317,20 @@ def test_settings_fish_install_appears_after_gpu_and_accept(monkeypatch, tmp_pat
     assert at.exception is None or len(at.exception) == 0, f"page raised: {at.exception}"
 
     text = _captions(at)
-    # The itemized deps-vs-model footprint confirm now shows for Fish.
-    assert "dependencies" in text and "model" in text and "total" in text, (
-        f"expected an itemized deps + model footprint confirm after accept, got:\n{text}"
-    )
-    # The Install action exists now; the "I accept" gate is gone (acceptance persisted).
-    install_btns = [
-        b for b in at.button if b.key in ("fish_install_confirm", "fish_install")
-    ]
+    # Step 1: the Install button shows now; the "I accept" gate is gone (acceptance persisted).
+    install_btns = [b for b in at.button if b.key == "fish_install_confirm"]
     assert install_btns, "no Fish Install button after the license was accepted"
     assert not [b for b in at.button if b.key == "fish_accept_license"], (
         "the 'I accept' gate must be gone once accepted (D-08)"
+    )
+
+    # Step 2: clicking Install reveals the itemized deps-vs-model footprint + Confirm.
+    install_btns[0].click().run()
+    assert at.exception is None or len(at.exception) == 0, f"page raised after click: {at.exception}"
+    text = _captions(at)
+    assert "dependencies" in text and "model" in text and "total" in text, (
+        f"expected an itemized deps + model footprint confirm after clicking Install, got:\n{text}"
+    )
+    assert [b for b in at.button if b.key == "fish_install"], (
+        "no 'Confirm — download' button after clicking Install"
     )

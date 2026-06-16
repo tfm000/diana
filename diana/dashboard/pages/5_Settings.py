@@ -996,29 +996,42 @@ def _render_heavy_engine_row(
         if not installed and not active:
             if license is not None and not _render_heavy_license_gate(engine, license):
                 return  # license not yet accepted — gate is showing, nothing further
-            st.caption(
-                f"{label} needs ~{deps_mb:.0f} MB dependencies + ~{model_mb:.0f} MB "
-                f"model (~{total_mb:.0f} MB total). Saved to your per-user cache."
-            )
             _confirm_key = f"_{engine}_install_confirm"
-            # D-04: heavy installs ALWAYS exceed >200 MB, so always require a confirm.
+            # D-04: heavy installs ALWAYS exceed >200 MB, so a deliberate confirm precedes
+            # any byte. Step 1 is a plain "Install"; clicking it REVEALS the itemized
+            # footprint + an explicit "Confirm — download ~N MB" (plus a Cancel to back
+            # out), so the two clicks are visibly distinct and the second is an informed
+            # opt-in — not the old dead double-"Install" where nothing changed between them.
             if not st.session_state.get(_confirm_key):
                 if st.button("Install", key=f"{engine}_install_confirm", type="primary"):
                     st.session_state[_confirm_key] = True
                     st.rerun()
             else:
-                if st.button("Install", key=f"{engine}_install", type="primary"):
-                    st.session_state.pop(_confirm_key, None)
-                    # D-05: disk pre-check against venvs_dir() before any byte.
-                    ok, free = has_space(paths.venvs_dir(), total_bytes)
-                    if not ok:
-                        st.error(
-                            f"Not enough disk space: need ~{total_mb:.0f} MB "
-                            f"(plus headroom), only {free / 1e6:.0f} MB free. "
-                            "Free up space and try again."
-                        )
-                    else:
-                        _start_heavy_install(engine, spec, total_bytes)
+                st.caption(
+                    f"{label} needs ~{deps_mb:.0f} MB dependencies + ~{model_mb:.0f} MB "
+                    f"model (~{total_mb:.0f} MB total). Saved to your per-user cache."
+                )
+                _go_col, _cancel_col = st.columns(2)
+                with _go_col:
+                    if st.button(
+                        f"Confirm — download ~{total_mb:.0f} MB",
+                        key=f"{engine}_install", type="primary",
+                    ):
+                        # D-05: disk pre-check against venvs_dir() before any byte.
+                        ok, free = has_space(paths.venvs_dir(), total_bytes)
+                        if not ok:
+                            st.error(
+                                f"Not enough disk space: need ~{total_mb:.0f} MB "
+                                f"(plus headroom), only {free / 1e6:.0f} MB free. "
+                                "Free up space and try again."
+                            )
+                        else:
+                            st.session_state.pop(_confirm_key, None)
+                            _start_heavy_install(engine, spec, total_bytes)
+                            st.rerun()
+                with _cancel_col:
+                    if st.button("Cancel", key=f"{engine}_install_cancel"):
+                        st.session_state.pop(_confirm_key, None)
                         st.rerun()
 
 

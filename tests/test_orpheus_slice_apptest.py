@@ -141,16 +141,27 @@ def test_settings_orpheus_install_row_renders(monkeypatch, tmp_path):
     assert at.exception is None or len(at.exception) == 0, f"page raised: {at.exception}"
 
     text = _captions(at)
-    # The subsection header + the itemized deps-vs-model footprint confirm.
+    # The subsection header + the Orpheus row.
     assert "Heavy opt-in engines" in text, f"missing Heavy opt-in engines section:\n{text}"
     assert "Orpheus" in text, "Orpheus row not rendered"
-    assert "dependencies" in text and "model" in text and "total" in text, (
-        f"expected an itemized deps + model footprint confirm, got:\n{text}"
-    )
 
-    # An Install action exists on the Orpheus row.
-    install_btns = [b for b in at.button if b.key in ("orpheus_install_confirm", "orpheus_install")]
+    # Step 1: a plain Install button (the itemized footprint is revealed on the confirm step).
+    install_btns = [b for b in at.button if b.key == "orpheus_install_confirm"]
     assert install_btns, "no Orpheus Install button rendered"
+
+    # Step 2: clicking Install reveals the itemized deps-vs-model footprint + Confirm/Cancel.
+    install_btns[0].click().run()
+    assert at.exception is None or len(at.exception) == 0, f"page raised after click: {at.exception}"
+    text = _captions(at)
+    assert "dependencies" in text and "model" in text and "total" in text, (
+        f"expected an itemized deps + model footprint confirm after clicking Install, got:\n{text}"
+    )
+    assert [b for b in at.button if b.key == "orpheus_install"], (
+        "no 'Confirm — download' button after clicking Install"
+    )
+    assert [b for b in at.button if b.key == "orpheus_install_cancel"], (
+        "no Cancel button on the confirm step"
+    )
 
     # Rendering the row imported NO heavy SDK (ENGINE-01 / D-17).
     newly = {m for m in _HEAVY_SDKS if m in sys.modules} - before

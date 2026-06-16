@@ -183,17 +183,22 @@ def test_settings_f5_install_appears_after_accept(monkeypatch, tmp_path):
     assert at.exception is None or len(at.exception) == 0, f"page raised: {at.exception}"
 
     text = _captions(at)
-    # The itemized deps-vs-model footprint confirm now shows for F5.
-    assert "dependencies" in text and "model" in text and "total" in text, (
-        f"expected an itemized deps + model footprint confirm after accept, got:\n{text}"
-    )
-    # The Install action exists now; the "I accept" gate is gone (acceptance persisted).
-    install_btns = [
-        b for b in at.button if b.key in ("f5_install_confirm", "f5_install")
-    ]
+    # Step 1: the Install button shows now; the "I accept" gate is gone (acceptance persisted).
+    install_btns = [b for b in at.button if b.key == "f5_install_confirm"]
     assert install_btns, "no F5 Install button after the license was accepted"
     accept_btns = [b for b in at.button if b.key == "f5_accept_license"]
     assert not accept_btns, "the 'I accept' gate must be gone once accepted (D-08)"
+
+    # Step 2: clicking Install reveals the itemized deps-vs-model footprint + Confirm.
+    install_btns[0].click().run()
+    assert at.exception is None or len(at.exception) == 0, f"page raised after click: {at.exception}"
+    text = _captions(at)
+    assert "dependencies" in text and "model" in text and "total" in text, (
+        f"expected an itemized deps + model footprint confirm after clicking Install, got:\n{text}"
+    )
+    assert [b for b in at.button if b.key == "f5_install"], (
+        "no 'Confirm — download' button after clicking Install"
+    )
 
     newly = {m for m in _HEAVY_SDKS if m in sys.modules} - before
     assert not newly, f"Settings install row imported heavy SDK(s): {newly}"
