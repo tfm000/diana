@@ -30,7 +30,9 @@ def _prefetch() -> int:
     """Warm the HF cache by constructing OrpheusCpp once (downloads GGUF + SNAC)."""
     from orpheus_cpp import OrpheusCpp
 
-    OrpheusCpp()  # constructing triggers the GGUF + SNAC ONNX download into HF_HOME
+    # English model: orpheus-cpp defaults to lang="es" (a Spanish/Italian finetune) — this
+    # engine's voices (tara/leah/…) are en-us, so pin "en". Construction downloads GGUF+SNAC.
+    OrpheusCpp(lang="en")
     return 0
 
 
@@ -43,7 +45,9 @@ def _synthesize() -> int:
     # n_gpu_layers=-1 offloads all layers to the GPU (Metal on Apple Silicon, where the
     # metal wheel is installed) — the default 0 runs 100% on CPU (very slow). On a CPU-only
     # build/host llama falls back to CPU, so -1 is safe cross-platform.
-    orpheus = OrpheusCpp(n_gpu_layers=-1)
+    # lang="en": orpheus-cpp defaults to "es" (Spanish/Italian model); pin English to match
+    # this engine's en-us voices, else the wrong-language model is used.
+    orpheus = OrpheusCpp(n_gpu_layers=-1, lang="en")
     sr, audio = orpheus.tts(req["text"], options={"voice_id": req["voice_id"]})
     # orpheus-cpp returns a 2-D (1, N) array (concatenate axis=1); flatten to 1-D mono or
     # libsndfile reads it as N channels and rejects it ("Format not recognised").
