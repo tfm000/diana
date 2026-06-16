@@ -8,12 +8,15 @@ engine-agnostic Custom Voices pool (D-11). Synthesis runs OUT OF PROCESS in the 
 ``torch`` venv (D-03 / Q-B): F5 installs torch there, Fish reuses it. The app interpreter
 NEVER imports torch / fish_speech.
 
-The Fish DELTA over the F5 sibling is the GPU gate (D-09/D-10). Fish S2 Pro is
-NVIDIA-CUDA-focused (~12-24 GB VRAM) and effectively unsupported on Apple Silicon
-(RESEARCH A5), so ``initialize()`` gates on BOTH ``heavy_engine_installed("fish")`` AND a
-capable NVIDIA GPU (``gpu_probe.capable_nvidia_gpu()`` — torch-free, ``nvidia-smi`` only).
-On a machine without a capable GPU the engine refuses with the GPU reason string, and the
-Settings row is SHOWN BUT DISABLED with that same reason (D-10) — never silently hidden.
+The Fish DELTA over the F5 sibling is the GPU gate (D-09 corrected / D-10). The gate now
+allows TWO capable tiers via ``gpu_probe.fish_capability()`` (torch-free): a capable NVIDIA
+GPU (~12+ GB VRAM, tier "cuda", FULL support) AND capable Apple Silicon (>=16 GB unified,
+tier "apple", EXPERIMENTAL via Metal/MPS — fish-speech has native MPS support, PR #461, so
+the earlier "effectively unsupported on Apple Silicon" framing was false). ``initialize()``
+gates on BOTH ``heavy_engine_installed("fish")`` AND ``fish_capability()`` resolving to a
+capable tier ({"cuda","apple"}). On any other machine (tier "none") the engine refuses with
+the honest reason (needs NVIDIA OR Apple Silicon), and the Settings row is SHOWN BUT DISABLED
+with that same reason (D-10) — never silently hidden.
 
 Three disciplines, mirrored verbatim from the F5 sibling (05-05/06):
 
@@ -28,8 +31,9 @@ Three disciplines, mirrored verbatim from the F5 sibling (05-05/06):
      ``HF_HOME`` points the worker at Diana's per-user cache so weights resolve where the
      installer put them (Pitfall 8 / D-07).
   3. **Defence-in-depth GPU gate (T-05-GPU).** ``initialize()`` AND the Settings row BOTH
-     gate on ``capable_nvidia_gpu()``; the engine-level gate means even a programmatic
-     ``create_engine("fish")`` on a GPU-less box refuses before any synth (D-10/D-16).
+     gate on ``fish_capability()``; the engine-level gate means even a programmatic
+     ``create_engine("fish")`` on an unsupported (tier "none") box refuses before any synth
+     (D-10/D-16).
 
 ``initialize()`` is a cheap fail-fast (D-16): it consults the filesystem install-state probe
 and the torch-free GPU gate ONLY — it never imports ``fish_speech``/``torch`` to find out.
@@ -139,16 +143,18 @@ class FishEngine:
     ]
 
     def initialize(self) -> None:
-        """Cheap fail-fast: refuse unless BOTH installed AND a capable GPU is present (D-10/D-16).
+        """Cheap fail-fast: refuse unless installed AND a capable tier (cuda|apple) (D-10/D-16).
 
-        Consults the filesystem install-state probe + the torch-free GPU gate ONLY — NO
-        ``fish_speech``/``torch`` import. Both ``install_state`` and ``gpu_probe`` are
-        imported lazily so even constructing/initializing the engine never pulls a heavy SDK
-        onto the app interpreter (ENGINE-01). Raises a ``FileNotFoundError`` pointing at
-        Settings ▸ Voices when not installed (D-16), and a ``RuntimeError`` carrying the GPU
-        reason string when no capable NVIDIA GPU is detected (D-10 — the same reason the
-        Settings row shows shown-but-disabled). This engine-level gate is defence-in-depth
-        on top of the Settings shown-but-disabled row (T-05-GPU).
+        Consults the filesystem install-state probe + the torch-free tri-state GPU gate
+        ONLY — NO ``fish_speech``/``torch`` import. Both ``install_state`` and ``gpu_probe``
+        are imported lazily so even constructing/initializing the engine never pulls a heavy
+        SDK onto the app interpreter (ENGINE-01). Raises a ``FileNotFoundError`` pointing at
+        Settings ▸ Voices when not installed (D-16). The hardware gate now allows BOTH a
+        capable NVIDIA GPU (>=12 GB, tier "cuda", full support) AND capable Apple Silicon
+        (>=16 GB unified, tier "apple", EXPERIMENTAL via MPS); only tier "none" raises a
+        ``RuntimeError`` carrying the honest reason (needs NVIDIA OR Apple Silicon — the same
+        reason the Settings row shows shown-but-disabled). This engine-level gate is
+        defence-in-depth on top of the Settings shown-but-disabled row (T-05-GPU).
         """
         from diana.tts import gpu_probe, install_state
 
@@ -156,8 +162,8 @@ class FishEngine:
             raise FileNotFoundError(
                 "Fish S2 Pro not installed — open Settings ▸ Voices and click Install."
             )
-        ok_gpu, _vram, reason = gpu_probe.capable_nvidia_gpu()
-        if not ok_gpu:
+        tier, _label, reason = gpu_probe.fish_capability()
+        if tier not in ("cuda", "apple"):
             raise RuntimeError(
                 f"Fish S2 Pro {reason}." if reason else "Fish S2 Pro requires a capable GPU."
             )
