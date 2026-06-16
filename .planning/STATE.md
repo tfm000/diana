@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-29)
 Phase: 05 (heavy-opt-in-engines) — EXECUTING
 Plan: 1 of 7
 Status: Executing Phase 05
-Last activity: 2026-06-15 -- Phase 05 execution started
+Last activity: 2026-06-16 -- Quick task 260616-hk6: Fish enabled-experimental on Apple Silicon (tri-state GPU gate)
 
 Progress: [██████████] 100% (19/19 plans complete; Phase 04 fully landed — the full in-app loop discover → preview → install → use → relabel → uninstall/clean up runs on the SAME generic substrate that now drives both the Piper per-voice catalog and the Kokoro single-model download)
 
@@ -155,6 +155,12 @@ None yet.
 
 - Phases 3, 5, and 6 flagged MEDIUM-confidence in research — plan each with `/gsd:plan-phase --research-phase` (Windows WinRT TTS; heavy-engine APIs; packaging/signing hooks).
 - Pre-existing News `unsafe_allow_html=True` XSS surface (`3_News.py:237`) is tracked for Phase 7 (HARD-03) — Phase 1 plans must not introduce or worsen it.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260616-hk6 | Enable Fish on Apple Silicon as experimental (tri-state GPU gate; corrects D-09 via deep research — fish-speech has native MPS, gated experimental on arm64 macOS ≥16GB) | 2026-06-16 | 2c84d4f | [260616-hk6-enable-fish-on-apple-silicon-as-experime](./quick/260616-hk6-enable-fish-on-apple-silicon-as-experime/) |
 
 ## Deferred Items
 
