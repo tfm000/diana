@@ -40,9 +40,14 @@ def _synthesize() -> int:
     from orpheus_cpp import OrpheusCpp
 
     req = json.loads(sys.stdin.read())
-    orpheus = OrpheusCpp()
+    # n_gpu_layers=-1 offloads all layers to the GPU (Metal on Apple Silicon, where the
+    # metal wheel is installed) — the default 0 runs 100% on CPU (very slow). On a CPU-only
+    # build/host llama falls back to CPU, so -1 is safe cross-platform.
+    orpheus = OrpheusCpp(n_gpu_layers=-1)
     sr, audio = orpheus.tts(req["text"], options={"voice_id": req["voice_id"]})
-    sf.write(req["out"], audio, sr, format="WAV")
+    # orpheus-cpp returns a 2-D (1, N) array (concatenate axis=1); flatten to 1-D mono or
+    # libsndfile reads it as N channels and rejects it ("Format not recognised").
+    sf.write(req["out"], audio.reshape(-1), sr, format="WAV")
     return 0
 
 
