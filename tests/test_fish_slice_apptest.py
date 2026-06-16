@@ -3,21 +3,25 @@
 The active UI policy (drive the REAL flow through ``streamlit.testing.v1.AppTest`` and
 assert on the resulting widgets, because shallow "renders without exception" tests missed
 real logic bugs at earlier checkpoints). Fish is the FINAL engine and the GPU-gated one
-(D-10), so these cover the load-bearing surfaces on the LIVE no-capable-GPU path — the real
-state of almost every verifying machine (macOS / no ``nvidia-smi``):
+(D-09 corrected / D-10), now a TRI-STATE (``fish_capability`` -> {cuda, apple, none}). The
+LIVE path on THIS box is tier "apple" (an M-series Mac with >=16 GB unified), so the Fish
+row is ENABLED-experimental here — these tests therefore PIN the tier explicitly rather than
+relying on the live result:
 
-  * Settings ▸ Voices (D-10 shown-but-disabled): on a machine WITHOUT a capable NVIDIA GPU
-    the Fish row is SHOWN with a DISABLED "Install" button + the VRAM reason caption — it is
-    NOT hidden, and NO license/footprint/Install-flow control appears (no download can
-    start). This is asserted on the LIVE gate (this box has no nvidia-smi), not a mock.
+  * Settings ▸ Voices (D-10 shown-but-disabled, tier "none" pinned): on an unsupported host
+    the Fish row is SHOWN with a DISABLED "Install" button + the honest NVIDIA-or-Apple
+    reason caption — it is NOT hidden, and NO license/footprint/Install-flow control appears.
+  * Settings ▸ Voices (tier "apple" pinned): on capable Apple Silicon the Fish row is SHOWN
+    and ENABLED-experimental — the EXPERIMENTAL (Metal/MPS) caption is present and (license
+    not yet accepted) the NC-license disclosure + "I accept" appears with NO disabled button.
   * Upload (D-16 / D-10 fail-fast): selecting Fish surfaces an actionable readiness note,
     and the exact gate wired into the Convert button's ``disabled=``
     (``registry.heavy_engine_failfast``) returns an install message for uninstalled Fish
     and ``None`` for a light engine.
-  * Settings ▸ Voices (D-08, GPU mocked ok): with ``capable_nvidia_gpu`` monkeypatched to
-    ``(True, 24, "")``, the Fish row then shows the Fish Audio Research License /
-    CC-BY-NC-SA-4.0 non-commercial disclosure + an "I accept" button BEFORE any Install
-    control — the GPU gate having opened, the license gate is the next barrier.
+  * Settings ▸ Voices (D-08, tier "cuda" pinned): with ``fish_capability`` monkeypatched to
+    tier "cuda", the Fish row shows the Fish Audio Research License / CC-BY-NC-SA-4.0
+    non-commercial disclosure + an "I accept" button BEFORE any Install control — the GPU
+    gate having opened, the license gate is the next barrier.
 
 Everything is deterministic + OFFLINE: the heavy per-user dirs point at ``tmp_path`` (so
 ``heavy_engine_installed('fish')`` reads False — uninstalled), the config singleton points
@@ -62,21 +66,36 @@ def _tmp_heavy_paths(monkeypatch, tmp_path):
         monkeypatch.setattr(P, name, lambda _d=sub: _d, raising=False)
 
 
-def _no_gpu(monkeypatch):
-    """Force the torch-free GPU gate to the LIVE no-capable-GPU result (D-10).
+def _force_tier(monkeypatch, tier, reason):
+    """Pin ``fish_capability`` to a fixed (tier, label, reason) on the imported GP module.
 
-    Most CI/dev boxes have no ``nvidia-smi`` so this already holds, but pinning it makes the
-    shown-but-disabled assertions deterministic regardless of where the suite runs.
+    The Settings/Upload pages call ``gpu_probe.fish_capability()``; patching it on ``GP``
+    (the module both pages import) makes every tier assertion deterministic regardless of
+    the host — critical here because the LIVE result on this M-series box is tier "apple".
     """
-    monkeypatch.setattr(
-        GP, "capable_nvidia_gpu",
-        lambda *a, **k: (False, 0, "requires an NVIDIA GPU with ~12+ GB VRAM (none detected)"),
+    monkeypatch.setattr(GP, "fish_capability", lambda *a, **k: (tier, tier, reason))
+
+
+def _tier_none(monkeypatch):
+    """Pin tier 'none' (unsupported host) -> the shown-but-disabled row + honest dual reason."""
+    _force_tier(
+        monkeypatch, "none",
+        "requires an NVIDIA GPU (~12+ GB VRAM) or Apple Silicon (16+ GB unified memory)",
     )
 
 
-def _gpu_ok(monkeypatch):
-    """Force a capable GPU so the GPU gate opens and the license gate becomes the barrier."""
-    monkeypatch.setattr(GP, "capable_nvidia_gpu", lambda *a, **k: (True, 24, ""))
+def _tier_apple(monkeypatch):
+    """Pin tier 'apple' (capable Apple Silicon) -> enabled-experimental behind the license."""
+    _force_tier(
+        monkeypatch, "apple",
+        "experimental on Apple Silicon — runs via Metal/MPS, slower than NVIDIA, "
+        "unsupported upstream",
+    )
+
+
+def _tier_cuda(monkeypatch):
+    """Pin tier 'cuda' (capable NVIDIA GPU) -> enabled, full support; license is next barrier."""
+    _force_tier(monkeypatch, "cuda", "")
 
 
 def _tmp_config(monkeypatch, tmp_path, engine="native_os"):
@@ -112,11 +131,15 @@ def _captions(at) -> str:
     return "\n".join(chunks)
 
 
-# --- D-10: WITHOUT a capable GPU the Fish row is SHOWN-but-DISABLED (never hidden) ---
+# --- D-10: tier "none" -> the Fish row is SHOWN-but-DISABLED (never hidden) ---
 def test_settings_fish_shown_but_disabled_without_gpu(monkeypatch, tmp_path):
-    """Settings: no capable GPU -> Fish row SHOWN with a DISABLED Install + VRAM reason."""
+    """Settings: tier 'none' -> Fish row SHOWN with a DISABLED Install + honest dual reason.
+
+    The tier is PINNED to "none" (not the live result): this box is tier "apple" (enabled),
+    so the disabled-path assertion must mock an unsupported host to stay meaningful.
+    """
     _tmp_heavy_paths(monkeypatch, tmp_path)
-    _no_gpu(monkeypatch)
+    _tier_none(monkeypatch)
     _tmp_config(monkeypatch, tmp_path, engine="native_os")
 
     before = {m for m in _HEAVY_SDKS if m in sys.modules}
@@ -128,9 +151,9 @@ def test_settings_fish_shown_but_disabled_without_gpu(monkeypatch, tmp_path):
     assert "Heavy opt-in engines" in text, f"missing Heavy opt-in engines section:\n{text}"
     # The row is SHOWN (Fish title) — never hidden (D-10).
     assert "Fish" in text, f"the Fish row must be SHOWN even without a GPU, got:\n{text}"
-    # The VRAM reason caption is present.
-    assert "VRAM" in text or "GPU" in text, (
-        f"expected the GPU/VRAM reason on the shown-disabled Fish row, got:\n{text}"
+    # The honest dual reason names BOTH an NVIDIA GPU and Apple Silicon (no flat NVIDIA-only).
+    assert "NVIDIA" in text and "Apple Silicon" in text, (
+        f"expected the honest NVIDIA-or-Apple reason on the disabled Fish row, got:\n{text}"
     )
 
     # A DISABLED Install button is rendered for Fish (shown-but-disabled, D-10).
@@ -153,11 +176,53 @@ def test_settings_fish_shown_but_disabled_without_gpu(monkeypatch, tmp_path):
     assert not newly, f"the shown-disabled Fish row imported heavy SDK(s): {newly}"
 
 
+# --- tier "apple": capable Apple Silicon -> SHOWN + ENABLED-experimental -------------
+def test_settings_fish_apple_silicon_enabled_experimental(monkeypatch, tmp_path):
+    """Settings: tier 'apple' -> Fish row ENABLED-experimental (caption + license, no disabled)."""
+    _tmp_heavy_paths(monkeypatch, tmp_path)
+    _tier_apple(monkeypatch)
+    cfg, db = _tmp_config(monkeypatch, tmp_path, engine="native_os")
+
+    # Sanity: the Fish license is NOT accepted out of the box, so the license gate shows.
+    assert get_setting(db, "license.accepted.fish", None) is None
+
+    before = {m for m in _HEAVY_SDKS if m in sys.modules}
+    at = AppTest.from_file(_SETTINGS, default_timeout=30)
+    at.run()
+    assert at.exception is None or len(at.exception) == 0, f"page raised: {at.exception}"
+
+    text = _captions(at)
+    assert "Fish" in text, f"the Fish row must be SHOWN on Apple Silicon, got:\n{text}"
+    # The EXPERIMENTAL Metal/MPS caption is present on the enabled row.
+    low = text.lower()
+    assert "experimental" in low and ("mps" in low or "metal" in low), (
+        f"expected the EXPERIMENTAL Metal/MPS caption on the Apple Silicon Fish row, got:\n{text}"
+    )
+    # The row FELL THROUGH to the license gate: 'I accept' appears, NO disabled button.
+    assert [b for b in at.button if b.key == "fish_accept_license"], (
+        "expected the NC-license 'I accept' on the enabled Apple-Silicon Fish row"
+    )
+    assert not [b for b in at.button if b.key == "fish_install_disabled"], (
+        "the shown-disabled Install must be ABSENT once the GPU gate opens (tier apple)"
+    )
+    # License not yet accepted -> no Install control yet (D-08 precedes any byte).
+    assert not [
+        b for b in at.button if b.key in ("fish_install_confirm", "fish_install")
+    ], "no Install control may appear before the license is accepted (D-08)"
+
+    newly = {m for m in _HEAVY_SDKS if m in sys.modules} - before
+    assert not newly, f"the enabled Apple-Silicon Fish row imported heavy SDK(s): {newly}"
+
+
 # --- D-16/D-10: selecting uninstalled Fish surfaces an actionable readiness note -----
 def test_upload_fish_selection_shows_actionable_note(monkeypatch, tmp_path):
-    """Upload: choosing Fish (uninstalled, no GPU) shows an actionable readiness note."""
+    """Upload: choosing Fish (uninstalled, tier 'none') shows the honest dual-reason note.
+
+    The tier is PINNED to "none" so the disabled-reason assertion is meaningful regardless
+    of host (this box is tier "apple", which would instead show the experimental note).
+    """
     _tmp_heavy_paths(monkeypatch, tmp_path)
-    _no_gpu(monkeypatch)
+    _tier_none(monkeypatch)
     _tmp_config(monkeypatch, tmp_path, engine="native_os")
 
     before = {m for m in _HEAVY_SDKS if m in sys.modules}
@@ -171,10 +236,10 @@ def test_upload_fish_selection_shows_actionable_note(monkeypatch, tmp_path):
     assert at.exception is None or len(at.exception) == 0, f"page raised: {at.exception}"
 
     text = _captions(at)
-    # On a GPU-less box the readiness note surfaces the GPU/VRAM reason (D-10) — the user
-    # sees WHY Fish is unavailable rather than a blank/Ready badge.
-    assert "GPU" in text or "VRAM" in text, (
-        f"expected the Fish GPU-gate reason on the Upload readiness note, got:\n{text}"
+    # On an unsupported host the readiness note surfaces the honest dual reason (D-10) — the
+    # user sees WHY Fish is unavailable (NVIDIA OR Apple Silicon), not a flat NVIDIA-only claim.
+    assert "NVIDIA" in text and "Apple Silicon" in text, (
+        f"expected the honest NVIDIA-or-Apple reason on the Upload readiness note, got:\n{text}"
     )
     newly = {m for m in _HEAVY_SDKS if m in sys.modules} - before
     assert not newly, f"Upload Fish selection imported heavy SDK(s): {newly}"
@@ -195,11 +260,11 @@ def test_heavy_engine_failfast_gate_drives_convert_disable_fish(monkeypatch, tmp
     assert heavy_engine_failfast("kokoro") is None
 
 
-# --- D-08: with the GPU gate OPEN, the NC-license disclosure precedes any Install ----
+# --- D-08: with the GPU gate OPEN (tier cuda), the NC-license disclosure precedes Install -
 def test_settings_fish_license_gate_after_gpu_ok(monkeypatch, tmp_path):
-    """Settings: GPU mocked ok -> Fish row shows the NC license + 'I accept', NO Install yet."""
+    """Settings: tier 'cuda' -> Fish row shows the NC license + 'I accept', NO Install yet."""
     _tmp_heavy_paths(monkeypatch, tmp_path)
-    _gpu_ok(monkeypatch)
+    _tier_cuda(monkeypatch)
     cfg, db = _tmp_config(monkeypatch, tmp_path, engine="native_os")
 
     # Sanity: the Fish license is NOT accepted out of the box.
@@ -236,11 +301,11 @@ def test_settings_fish_license_gate_after_gpu_ok(monkeypatch, tmp_path):
     assert not newly, f"Settings Fish license gate imported heavy SDK(s): {newly}"
 
 
-# --- D-08/D-10: GPU ok AND license accepted -> the footprint confirm + Install appear -
+# --- D-08/D-10: tier cuda AND license accepted -> the footprint confirm + Install appear -
 def test_settings_fish_install_appears_after_gpu_and_accept(monkeypatch, tmp_path):
-    """Settings: GPU ok + accept-once flag set -> the Fish footprint confirm + Install show."""
+    """Settings: tier 'cuda' + accept-once flag set -> the Fish footprint confirm + Install show."""
     _tmp_heavy_paths(monkeypatch, tmp_path)
-    _gpu_ok(monkeypatch)
+    _tier_cuda(monkeypatch)
     cfg, db = _tmp_config(monkeypatch, tmp_path, engine="native_os")
 
     # Simulate the user having accepted the Fish license (persisted in app_settings, D-08).

@@ -881,7 +881,8 @@ def _render_heavy_license_gate(engine: str, license: dict) -> bool:
 
 
 def _render_heavy_engine_row(
-    engine: str, spec, license: dict | None = None, gpu_gate: tuple | None = None
+    engine: str, spec, license: dict | None = None, gpu_gate: tuple | None = None,
+    experimental: str | None = None,
 ) -> None:
     """A heavy opt-in engine install row: footprint confirm + disk pre-check + 2-phase.
 
@@ -890,12 +891,16 @@ def _render_heavy_engine_row(
     state model, ``_can_spawn_download`` guard, the ``@st.fragment`` progress poller) but
     swapping the download substrate for the 05-03 provisioner:
 
-      * D-10 SHOWN-BUT-DISABLED GPU gate (when ``gpu_gate`` is given): ``gpu_gate`` is the
-        ``capable_nvidia_gpu()`` result ``(ok, vram, reason)``. When it is NOT ok, the row
-        is SHOWN (title + a DISABLED "Install" button + the reason caption) but NO
-        license/footprint/Install control appears — the user sees WHY Fish is unavailable,
-        it is never hidden (the reconciled HEAVY-03/SC#3 wording). When ok (or ``gpu_gate``
-        is None — Orpheus/F5), the row falls through to the normal license + install flow.
+      * D-10 SHOWN-BUT-DISABLED GPU gate (when ``gpu_gate`` is given): ``gpu_gate`` is an
+        ``(ok, vram, reason)``-shaped tuple (Fish adapts its ``fish_capability()`` tri-state
+        into it — tier cuda/apple -> ok=True, tier none -> ok=False with the honest dual
+        reason). When it is NOT ok, the row is SHOWN (title + a DISABLED "Install" button +
+        the reason caption) but NO license/footprint/Install control appears — the user sees
+        WHY Fish is unavailable, it is never hidden (the reconciled HEAVY-03/SC#3 wording).
+        When ok (or ``gpu_gate`` is None — Orpheus/F5), the row falls through to the normal
+        license + install flow. ``experimental`` (when set — Fish on Apple Silicon, tier
+        "apple") renders an EXPERIMENTAL caption on the fell-through/enabled row so the user
+        knows it runs but may be slow/unstable before they accept + install.
       * D-08 accept-once NC-license gate (when ``license`` is given): the disclosure +
         "I accept" is shown BEFORE any install control or download, persisted so a
         re-install never re-prompts. Until accepted, NO footprint/disk/Install appears
@@ -945,6 +950,11 @@ def _render_heavy_engine_row(
         info_col, action_col = st.columns([3, 1])
         with info_col:
             st.markdown(f"**{label}** — neural voices, runs on-device (opt-in)")
+            # EXPERIMENTAL caption (Fish on Apple Silicon, tier "apple"): the row is enabled
+            # behind the license + footprint gates, but the user is told up-front it runs via
+            # MPS and may be slow/unstable (D-09 correction) BEFORE they accept + install.
+            if experimental:
+                st.caption(f"⚠️ {experimental}")
             if installed:
                 st.success(f"Ready · {label} installed", icon="✅")
             else:
@@ -1183,17 +1193,23 @@ def _cross_engine_badge(engine: str, voice) -> None:
             st.caption("~1.5 GB+, downloads on install — set up in Engine models above")
         return
     if engine == "fish":
-        # Heavy opt-in engine (HEAVY-03), GPU-gated (D-10): the torch-free nvidia-smi gate
-        # decides availability FIRST, so on a GPU-less box the browser row shows WHY Fish is
-        # unavailable (the VRAM reason) rather than offering an install it can't use. Then
-        # the cheap filesystem probe of the shared torch venv — NO torch/fish_speech import
-        # on the badge path (ENGINE-01/D-17). The voice still lists (browsing is
-        # GPU-independent); only install/use is gated.
-        ok_gpu, _vram, reason = gpu_probe.capable_nvidia_gpu()
-        if not ok_gpu:
+        # Heavy opt-in engine (HEAVY-03), GPU-gated tri-state (D-09 corrected / D-10): the
+        # torch-free fish_capability() gate decides availability FIRST. tier "none" -> the
+        # browser row shows WHY Fish is unavailable (the honest NVIDIA-or-Apple reason) rather
+        # than offering an install it can't use; tier "apple" -> experimental (runs via MPS);
+        # tier "cuda" -> full support. Then the cheap filesystem probe of the shared torch
+        # venv — NO torch/fish_speech import on the badge path (ENGINE-01/D-17). The voice
+        # still lists (browsing is GPU-independent); only install/use is gated.
+        tier, _label, reason = gpu_probe.fish_capability()
+        if tier == "none":
             st.caption(f"Unavailable — {reason}.")
         elif install_state.heavy_engine_installed("fish"):
             st.success("Ready · Fish installed", icon="✅")
+        elif tier == "apple":
+            st.caption(
+                "~large, downloads on install — experimental on Apple Silicon (MPS), "
+                "set up in Engine models above"
+            )
         else:
             st.caption("~large, downloads on install — set up in Engine models above")
         return
@@ -1803,13 +1819,18 @@ with tab_voices:
             "url": "https://github.com/SWivid/F5-TTS",
         },
     )
-    # Fish Audio S2 Pro (HEAVY-03): GPU-gated (D-10) AND non-commercial (D-08). The row is
-    # SHOWN-BUT-DISABLED with the VRAM reason on a machine without a capable NVIDIA GPU
-    # (gpu_probe.capable_nvidia_gpu — torch-free nvidia-smi); behind the GPU gate it shows
-    # the accept-once Fish Audio Research License / CC-BY-NC-SA-4.0 disclosure before any
-    # download (the F5 gate mechanism, license.accepted.fish). The spec comes from
-    # fish_engine (git+SHA pin), so no repo IDs / SHA are hardcoded here; nothing heavy is
-    # imported until Install runs. This completes the three-engine lineup (D-01).
+    # Fish Audio S2 Pro (HEAVY-03): GPU-gated tri-state (D-09 corrected / D-10) AND
+    # non-commercial (D-08). fish_capability() resolves {cuda, apple, none}: tier "cuda"
+    # (NVIDIA >=12 GB) -> enabled, full support; tier "apple" (Apple Silicon >=16 GB) ->
+    # enabled behind the license + footprint gates with an EXPERIMENTAL (Metal/MPS) caption;
+    # tier "none" -> SHOWN-BUT-DISABLED with the honest NVIDIA-or-Apple reason (never the old
+    # flat NVIDIA-only claim). The tri-state is adapted into the (ok, vram, reason)-shaped
+    # gpu_gate the row consumes: ok=True for cuda/apple, ok=False (+reason) for none. Behind
+    # the GPU gate the accept-once Fish Audio Research License / CC-BY-NC-SA-4.0 disclosure
+    # precedes any download (the F5 gate mechanism, license.accepted.fish). The spec comes
+    # from fish_engine (git+SHA pin); nothing heavy is imported until Install runs. Completes
+    # the three-engine lineup (D-01).
+    _fish_tier, _fish_label, _fish_reason = gpu_probe.fish_capability()
     _render_heavy_engine_row(
         "fish",
         fish_install_spec(),
@@ -1820,7 +1841,12 @@ with tab_voices:
             ),
             "url": "https://huggingface.co/fishaudio/s2-pro",
         },
-        gpu_gate=gpu_probe.capable_nvidia_gpu(),
+        gpu_gate=(_fish_tier in ("cuda", "apple"), 0, _fish_reason),
+        experimental=(
+            "Experimental on Apple Silicon — runs via Metal/MPS, slower than NVIDIA, "
+            "unsupported upstream."
+            if _fish_tier == "apple" else None
+        ),
     )
 
     # -----------------------------------------------------------------------
