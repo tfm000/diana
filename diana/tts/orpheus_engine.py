@@ -71,7 +71,12 @@ def orpheus_install_spec():
     return HeavyInstallSpec(
         engine="orpheus",
         venv_name="orpheus",
-        packages=["orpheus-cpp==0.0.3", "llama-cpp-python==0.3.29"],
+        # llama-cpp-python pinned to 0.3.30, NOT 0.3.29: the abetlen 0.3.29 metal/arm64
+        # wheel is a corrupt artifact (Bad CRC-32 on lib/cmake/ggml/ggml-config.cmake;
+        # uv rejects it as "trailing contents after the end-of-central-directory record",
+        # pip rejects the bad CRC). 0.3.30 is the next clean release on BOTH the metal
+        # (macOS arm64) and cpu (Windows) indexes; orpheus-cpp 0.0.3 doesn't pin it.
+        packages=["orpheus-cpp==0.0.3", "llama-cpp-python==0.3.30"],
         extra_index=extra_index,
         prefetch_argv=[str(paths.heavy_worker("orpheus_worker.py")), "--prefetch"],
         deps_bytes=int(0.4 * _GB),

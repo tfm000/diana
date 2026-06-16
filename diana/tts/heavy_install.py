@@ -75,7 +75,11 @@ _BUILTIN_SPECS: dict[str, HeavyInstallSpec] = {
     "orpheus": HeavyInstallSpec(
         engine="orpheus",
         venv_name="orpheus",
-        packages=["orpheus-cpp==0.0.3", "llama-cpp-python==0.3.29"],
+        # 0.3.30, NOT 0.3.29: the abetlen 0.3.29 metal/arm64 wheel is corrupt (Bad CRC-32
+        # on lib/cmake/ggml/ggml-config.cmake; uv rejects it as trailing-EOCD content).
+        # 0.3.30 is clean on the metal (macOS) + cpu (Windows) indexes. Keep in sync with
+        # orpheus_install_spec() in orpheus_engine.py.
+        packages=["orpheus-cpp==0.0.3", "llama-cpp-python==0.3.30"],
         extra_index=_ABETLEN_CPU,
         prefetch_argv=["-m", "orpheus_cpp", "--prefetch"],
         deps_bytes=int(0.4 * _GB),
