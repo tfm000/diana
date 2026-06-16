@@ -105,6 +105,12 @@ def test_provision_venv_uv_argv_and_order(tmp_path, tmp_data_paths, mock_uv,
     # uv venv --python <py> <venv>
     assert "--python" in venv_call
     assert str(venv_path) in [str(x) for x in venv_call]
+    # Idempotent re-install / shared-venv reuse: --allow-existing so a retry after a
+    # failed attempt reuses the partial venv and the shared torch venv (F5+Fish) is
+    # reused rather than erroring "venv already exists" (regression guard).
+    assert "--allow-existing" in venv_call, (
+        "uv venv must pass --allow-existing (idempotent re-install + shared-venv reuse)"
+    )
     # uv pip install --python <venv-python> orpheus-cpp
     assert "pip" in install_call and "install" in install_call
     assert "--python" in install_call

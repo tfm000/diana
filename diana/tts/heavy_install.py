@@ -234,8 +234,13 @@ def provision_venv(venv_path, packages, extra_index=None, py="3.12",
     venv_path = Path(venv_path)
     uv = _resolve_uv()
     # 1) create the venv (with a managed standalone CPython at the pinned version).
-    _run([uv, "venv", "--python", py, str(venv_path)], on_line, cancel=cancel,
-         timeout=timeout)
+    #    --allow-existing makes this idempotent: a re-install after a failed/cancelled
+    #    attempt REUSES the partial venv (the following `uv pip install` completes it)
+    #    instead of erroring "venv already exists"; and the F5+Fish SHARED 'torch' venv
+    #    (D-03) is reused by the second engine. NOT --clear — that would wipe the first
+    #    engine's install out of the shared venv.
+    _run([uv, "venv", "--allow-existing", "--python", py, str(venv_path)], on_line,
+         cancel=cancel, timeout=timeout)
     vpy = _venv_python(venv_path)
     # 2) install into THAT venv's python (ABI-pinned), optionally via a wheel index.
     cmd = [uv, "pip", "install", "--python", str(vpy), *packages]
