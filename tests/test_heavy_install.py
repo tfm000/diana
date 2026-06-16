@@ -223,3 +223,37 @@ def test_install_specs_include_soundfile():
             f"{spec.engine} install spec must pin soundfile (its worker writes the WAV via "
             f"soundfile.write): {spec.packages}"
         )
+
+
+def test_dir_size_sums_files_recursively(tmp_path):
+    """_dir_size totals all nested file sizes and returns 0 for a missing path."""
+    from diana.tts.heavy_install import _dir_size
+
+    assert _dir_size(tmp_path / "does-not-exist") == 0
+    (tmp_path / "a.bin").write_bytes(b"x" * 100)
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.bin").write_bytes(b"y" * 50)
+    assert _dir_size(tmp_path) == 150
+
+
+# --- D-08: Phase B reports weight-download progress (drives the fragment bar) --------
+@pytest.mark.skipif(
+    not _INSTALL_AVAILABLE,
+    reason="install_engine (two-phase install) lands in Wave 3",
+)
+def test_install_engine_weights_phase_reports_progress(tmp_path, tmp_data_paths,
+                                                       mock_uv, monkeypatch):
+    """Phase B sets a weights progress denominator and finalizes downloaded==total so the
+    @st.fragment renders a real progress bar (not a frozen 'Downloading…' label)."""
+    _bind_uv(monkeypatch, _fake_uv(tmp_path))
+    _patch_has_space(monkeypatch, (True, 10 ** 12))
+
+    state: dict = {}
+    _install_engine("orpheus", state=state)
+
+    assert state.get("done"), f"install did not complete: {state}"
+    assert state.get("phase") == "weights"
+    assert state.get("total"), "weights phase must set a progress total (bar denominator)"
+    assert state.get("downloaded") == state.get("total"), (
+        "weights download must finalize the bar to 100% (downloaded == total)"
+    )

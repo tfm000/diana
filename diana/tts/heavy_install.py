@@ -262,6 +262,22 @@ def _resolve_spec(spec_or_engine) -> HeavyInstallSpec:
         raise ValueError(f"unknown heavy engine: {spec_or_engine!r}") from None
 
 
+def _dir_size(path: Path) -> int:
+    """Total size in bytes of all files under ``path`` (0 if it does not exist).
+
+    Used to track weight-download progress as the per-user HF cache grows — the prefetch
+    subprocess streams no byte totals back to the installer thread (D-08, weights phase).
+    """
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += (Path(root) / name).stat().st_size
+            except OSError:
+                pass  # a temp/.incomplete file vanishing mid-walk is fine — skip it
+    return total
+
+
 def install_engine(spec_or_engine, state=None, *, on_line=None, cancel=None) -> None:
     """Two-phase install (deps -> weights) for one heavy engine — the thread target.
 
@@ -329,19 +345,44 @@ def install_engine(spec_or_engine, state=None, *, on_line=None, cancel=None) -> 
             return
 
         # B. Phase weights — prefetch model weights via the venv's OWN python with
-        #    HF_HOME pointed at the per-user cache (weights never land in ~/.cache).
+        #    HF_HOME pointed at the per-user cache (weights never land in ~/.cache). The
+        #    prefetch subprocess streams no byte totals back, so a daemon monitor polls the
+        #    HF cache GROWTH (delta from a baseline) into state["downloaded"]/["total"] —
+        #    that drives the @st.fragment's real progress bar for the weights download (D-08).
         state["phase"] = "weights"
         state["step"] = "Downloading model weights…"
         if spec.prefetch_argv:
+            import threading
+
             env = {**os.environ, "HF_HOME": str(paths.hf_cache_dir())}
-            proc = subprocess.run(
-                [str(vpy), *spec.prefetch_argv],
-                env=env, capture_output=True, text=True, timeout=3600,
-            )
+            hf_dir = paths.hf_cache_dir()
+            baseline = _dir_size(hf_dir)
+            state["total"] = spec.weights_bytes or 1
+            state["downloaded"] = 0
+            _stop = threading.Event()
+
+            def _track_weights() -> None:
+                # HF cache growth is the only progress signal this thread can see.
+                while not _stop.is_set():
+                    state["downloaded"] = max(0, _dir_size(hf_dir) - baseline)
+                    _stop.wait(0.5)
+
+            _mon = threading.Thread(target=_track_weights, daemon=True)
+            _mon.start()
+            try:
+                proc = subprocess.run(
+                    [str(vpy), *spec.prefetch_argv],
+                    env=env, capture_output=True, text=True, timeout=3600,
+                )
+            finally:
+                _stop.set()
+                _mon.join(timeout=2)  # ensure no late write races the finalize below
             if proc.returncode != 0:
                 raise RuntimeError(
                     f"weight prefetch failed: {(proc.stderr or '').strip()[:500]}"
                 )
+            # Finalize to 100% (the estimate may differ from the real downloaded size).
+            state["downloaded"] = state["total"]
 
         if _cancelled():
             state["cancelled"] = True
