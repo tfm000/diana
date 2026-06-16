@@ -63,7 +63,9 @@ def _synthesize() -> int:
         speed=req.get("speed", 1.0),
         remove_silence=True,
     )
-    sf.write(req["out"], wav, sr, format="WAV")
+    # Flatten to 1-D mono (defensive; f5_tts.infer usually returns 1-D already): a 2-D
+    # (1, N) array would be read by libsndfile as N channels and rejected — see orpheus.
+    sf.write(req["out"], wav.reshape(-1), sr, format="WAV")
     return 0
 
 

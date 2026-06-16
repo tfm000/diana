@@ -129,7 +129,9 @@ def _synthesize() -> int:
             sample_rate, audio = result.audio
     if audio is None:
         raise RuntimeError("fish-speech produced no audio")
-    sf.write(req["out"], audio, sample_rate, format="WAV")
+    # Flatten to 1-D mono: a 2-D (1, N) array would be read by libsndfile as N channels and
+    # rejected ("Format not recognised") — same fix as orpheus_worker.
+    sf.write(req["out"], audio.reshape(-1), sample_rate, format="WAV")
     return 0
 
 
