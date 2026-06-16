@@ -1,18 +1,15 @@
-"""Wave-0 RED/skip scaffold for the torch-free GPU gate (Plan 06, Fish/HEAVY-03).
+"""Torch-free GPU capability gate for Fish S2 Pro — TRI-STATE (Plan 06 + quick-260616-hk6).
 
-D-09/D-10: Fish S2 Pro needs an NVIDIA GPU with ~12+ GB VRAM. The capability must
-be detected on the cheap badge path WITHOUT importing torch (Pitfall 4 — no
-``torch.cuda.is_available()``), so the gate shells ``nvidia-smi`` and parses
-``memory.total`` (RESEARCH Pattern 4). These tests mock ``shutil.which`` /
-``subprocess.run`` (the ``fake_nvidia_smi`` fixture) and assert:
+D-09/D-10 (corrected): Fish S2 Pro runs FULL-SUPPORT on an NVIDIA GPU with ~12+ GB VRAM,
+EXPERIMENTAL on Apple Silicon (>=16 GB unified) via Metal/MPS (fish-speech has native MPS
+support — PR #461), and is otherwise disabled with an honest reason. The capability must be
+resolved on the cheap badge path WITHOUT importing torch (Pitfall 4 — no
+``torch.cuda.is_available()``): the gate shells ``nvidia-smi`` (``memory.total``) and
+``sysctl -n hw.memsize`` (RESEARCH Pattern 4) — both stdlib subprocess, never torch.
 
-  - absent GPU  -> ``(False, 0, <reason>)``
-  - below floor -> ``(False, _, <reason>)``
-  - at/above floor -> ``(True, vram_gb, "")``
-  - and ``torch`` is NEVER imported by the call (ENGINE-01 / D-09).
-
-``capable_nvidia_gpu`` + ``FISH_MIN_VRAM_GB`` land in Wave 6 (module home
-``diana.tts.gpu_probe``); collection stays GREEN until then.
+``capable_nvidia_gpu`` (unchanged contract — the "cuda" probe) and the new tri-state
+``fish_capability`` -> ``(tier, label, reason)`` with tier in {"cuda","apple","none"} are
+asserted below. Every ``fish_capability`` branch asserts ``"torch" not in sys.modules``.
 """
 
 import sys
@@ -21,11 +18,15 @@ import pytest
 
 # --- Guarded probe: the GPU gate lands in Wave 6 ----------------------------
 _capable_nvidia_gpu = None
+_fish_capability = None
 _FISH_MIN_VRAM_GB = None
+_APPLE_MIN_UNIFIED_GB = None
 try:
     from diana.tts.gpu_probe import (  # noqa: F401
+        APPLE_MIN_UNIFIED_GB as _APPLE_MIN_UNIFIED_GB,
         FISH_MIN_VRAM_GB as _FISH_MIN_VRAM_GB,
         capable_nvidia_gpu as _capable_nvidia_gpu,
+        fish_capability as _fish_capability,
     )
 
     _GPU_PROBE_AVAILABLE = True
@@ -47,7 +48,16 @@ def test_fish_min_vram_floor_sane():
     assert 8 <= _FISH_MIN_VRAM_GB <= 24
 
 
-# --- D-10: no nvidia-smi -> shown-but-disabled with a reason ----------------
+# --- The Apple unified-memory floor is the researched 16 GB ----------------
+@pytest.mark.skipif(
+    not _GPU_PROBE_AVAILABLE, reason="fish_capability lands in Wave 6"
+)
+def test_apple_min_unified_floor_sane():
+    """APPLE_MIN_UNIFIED_GB is the researched Apple Silicon floor (16 GB unified)."""
+    assert _APPLE_MIN_UNIFIED_GB == 16
+
+
+# --- D-10: no nvidia-smi -> capable_nvidia_gpu shown-but-disabled with a reason ---
 @pytest.mark.skipif(
     not _GPU_PROBE_AVAILABLE, reason="capable_nvidia_gpu lands in Wave 6"
 )
@@ -106,4 +116,95 @@ def test_nonzero_returncode_reports_disabled(fake_nvidia_smi):
     assert ok is False, "a non-zero nvidia-smi exit must return not-capable"
     assert vram == 0
     assert reason, "a failed query must carry a reason (D-10)"
+    _assert_no_torch()
+
+
+# ---------------------------------------------------------------------------
+# Tri-state fish_capability() — {cuda, apple, none} (quick-260616-hk6)
+# ---------------------------------------------------------------------------
+
+
+def _force_darwin_arm64(monkeypatch, machine="arm64", platform_name="darwin"):
+    """Mock a darwin/arm64 host so the Apple branch of fish_capability is reachable."""
+    import platform as _platform
+
+    monkeypatch.setattr(sys, "platform", platform_name, raising=False)
+    monkeypatch.setattr(_platform, "machine", lambda: machine)
+
+
+def _force_unified_memory(monkeypatch, gb):
+    """Stub the private Apple unified-memory reader to a fixed GB value (torch-free)."""
+    import diana.tts.gpu_probe as _gp
+
+    monkeypatch.setattr(_gp, "_apple_unified_gb", lambda: gb)
+
+
+# --- tier "cuda": a capable NVIDIA GPU -> full support ----------------------
+@pytest.mark.skipif(
+    not _GPU_PROBE_AVAILABLE, reason="fish_capability lands in Wave 6"
+)
+def test_fish_capability_cuda_tier(fake_nvidia_smi):
+    """A capable NVIDIA GPU (>=12 GB) -> tier 'cuda', empty/positive reason, no torch."""
+    fake_nvidia_smi(int((_FISH_MIN_VRAM_GB + 4) * 1024))  # MiB, over the floor
+    tier, label, reason = _fish_capability()
+    assert tier == "cuda"
+    assert label, "the cuda tier must carry a short label"
+    assert not reason, "a fully-supported NVIDIA GPU carries no disabled reason"
+    _assert_no_torch()
+
+
+# --- tier "apple": arm64 macOS with >=16 GB unified -> experimental ---------
+@pytest.mark.skipif(
+    not _GPU_PROBE_AVAILABLE, reason="fish_capability lands in Wave 6"
+)
+def test_fish_capability_apple_tier(fake_nvidia_smi, monkeypatch):
+    """arm64 darwin + >=16 GB unified, no nvidia-smi -> tier 'apple', experimental reason."""
+    fake_nvidia_smi(None)  # no NVIDIA GPU
+    _force_darwin_arm64(monkeypatch)
+    _force_unified_memory(monkeypatch, _APPLE_MIN_UNIFIED_GB + 32)  # plenty of RAM
+    tier, label, reason = _fish_capability()
+    assert tier == "apple"
+    assert label, "the apple tier must carry a short label"
+    low = reason.lower()
+    assert "apple" in low or "mps" in low or "metal" in low, (
+        f"the apple reason must mention Apple Silicon / Metal / MPS, got: {reason!r}"
+    )
+    assert "experimental" in low, (
+        f"the apple tier must be flagged EXPERIMENTAL, got: {reason!r}"
+    )
+    _assert_no_torch()
+
+
+# --- tier "none": no NVIDIA + under-spec/non-arm64 -> honest dual reason -----
+@pytest.mark.skipif(
+    not _GPU_PROBE_AVAILABLE, reason="fish_capability lands in Wave 6"
+)
+def test_fish_capability_none_tier_under_spec_mac(fake_nvidia_smi, monkeypatch):
+    """arm64 darwin but <16 GB unified, no nvidia-smi -> tier 'none', dual NVIDIA+Apple reason."""
+    fake_nvidia_smi(None)  # no NVIDIA GPU
+    _force_darwin_arm64(monkeypatch)
+    _force_unified_memory(monkeypatch, 8)  # below the 16 GB Apple floor
+    tier, _label, reason = _fish_capability()
+    assert tier == "none"
+    low = reason.lower()
+    assert "nvidia" in low, f"the none reason must name an NVIDIA GPU, got: {reason!r}"
+    assert "apple" in low, f"the none reason must name Apple Silicon, got: {reason!r}"
+    _assert_no_torch()
+
+
+@pytest.mark.skipif(
+    not _GPU_PROBE_AVAILABLE, reason="fish_capability lands in Wave 6"
+)
+def test_fish_capability_none_tier_non_apple(fake_nvidia_smi, monkeypatch):
+    """A non-darwin/non-arm64 host with no NVIDIA GPU -> tier 'none', dual reason, no torch."""
+    fake_nvidia_smi(None)  # no NVIDIA GPU
+    _force_darwin_arm64(monkeypatch, machine="x86_64", platform_name="linux")
+    tier, _label, reason = _fish_capability()
+    assert tier == "none"
+    low = reason.lower()
+    assert "nvidia" in low and "apple" in low, (
+        f"the none reason must name BOTH NVIDIA and Apple Silicon, got: {reason!r}"
+    )
+    # A flat NVIDIA-only claim is exactly the false-on-Mac wording this change retires.
+    assert low.strip() != "requires an nvidia gpu with ~12+ gb vram (none detected)"
     _assert_no_torch()
