@@ -206,3 +206,20 @@ def test_install_engine_marks_installed_on_success(tmp_path, tmp_data_paths,
     _call_install(_install_engine, "orpheus")
 
     assert (tmp_data_paths["venvs_dir"] / ".orpheus.installed").exists()
+
+
+# --- regression: every heavy worker writes its WAV via soundfile in an ISOLATED venv -
+def test_install_specs_include_soundfile():
+    """Each heavy worker (orpheus/f5/fish) writes its synth WAV via ``soundfile.write``
+    inside an isolated venv that does NOT inherit the app's soundfile, so every engine's
+    install spec MUST pin soundfile. Regression: Orpheus synth failed at real-install with
+    ``ModuleNotFoundError: No module named 'soundfile'`` because the spec omitted it."""
+    from diana.tts.orpheus_engine import orpheus_install_spec
+    from diana.tts.f5_engine import f5_install_spec
+    from diana.tts.fish_engine import fish_install_spec
+
+    for spec in (orpheus_install_spec(), f5_install_spec(), fish_install_spec()):
+        assert any("soundfile" in p for p in spec.packages), (
+            f"{spec.engine} install spec must pin soundfile (its worker writes the WAV via "
+            f"soundfile.write): {spec.packages}"
+        )

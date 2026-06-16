@@ -79,7 +79,7 @@ _BUILTIN_SPECS: dict[str, HeavyInstallSpec] = {
         # on lib/cmake/ggml/ggml-config.cmake; uv rejects it as trailing-EOCD content).
         # 0.3.30 is clean on the metal (macOS) + cpu (Windows) indexes. Keep in sync with
         # orpheus_install_spec() in orpheus_engine.py.
-        packages=["orpheus-cpp==0.0.3", "llama-cpp-python==0.3.30"],
+        packages=["orpheus-cpp==0.0.3", "llama-cpp-python==0.3.30", "soundfile>=0.12.0"],
         extra_index=_ABETLEN_CPU,
         prefetch_argv=["-m", "orpheus_cpp", "--prefetch"],
         deps_bytes=int(0.4 * _GB),
@@ -88,7 +88,7 @@ _BUILTIN_SPECS: dict[str, HeavyInstallSpec] = {
     "f5": HeavyInstallSpec(
         engine="f5",
         venv_name="torch",
-        packages=["f5-tts==1.1.20"],
+        packages=["f5-tts==1.1.20", "soundfile>=0.12.0"],
         extra_index=None,
         prefetch_argv=["-m", "f5_tts", "--prefetch"],
         deps_bytes=int(3.0 * _GB),
@@ -100,6 +100,8 @@ _BUILTIN_SPECS: dict[str, HeavyInstallSpec] = {
         packages=[
             "fish-speech @ git+https://github.com/fishaudio/fish-speech"
             "@e5e292632cb11e7a27b2b7487f58f612bc101e13",
+            # the fish worker writes the WAV via soundfile.write in the (shared) venv.
+            "soundfile>=0.12.0",
         ],
         extra_index=None,
         # Populated below after the dict is constructed (WR-04): fish-speech ships no

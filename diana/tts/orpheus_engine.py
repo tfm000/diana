@@ -76,7 +76,9 @@ def orpheus_install_spec():
         # uv rejects it as "trailing contents after the end-of-central-directory record",
         # pip rejects the bad CRC). 0.3.30 is the next clean release on BOTH the metal
         # (macOS arm64) and cpu (Windows) indexes; orpheus-cpp 0.0.3 doesn't pin it.
-        packages=["orpheus-cpp==0.0.3", "llama-cpp-python==0.3.30"],
+        # soundfile: the worker writes the synth WAV via soundfile.write (the isolated
+        # venv does NOT inherit the app's soundfile); orpheus-cpp doesn't pull it in.
+        packages=["orpheus-cpp==0.0.3", "llama-cpp-python==0.3.30", "soundfile>=0.12.0"],
         extra_index=extra_index,
         prefetch_argv=[str(paths.heavy_worker("orpheus_worker.py")), "--prefetch"],
         deps_bytes=int(0.4 * _GB),

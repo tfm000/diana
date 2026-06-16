@@ -93,7 +93,8 @@ def f5_install_spec():
     return HeavyInstallSpec(
         engine="f5",
         venv_name="torch",
-        packages=["f5-tts==1.1.20"],
+        # soundfile: the f5 worker writes the WAV via soundfile.write in the isolated venv.
+        packages=["f5-tts==1.1.20", "soundfile>=0.12.0"],
         extra_index=None,
         prefetch_argv=[str(paths.heavy_worker("f5_worker.py")), "--prefetch"],
         deps_bytes=int(3.0 * _GB),
