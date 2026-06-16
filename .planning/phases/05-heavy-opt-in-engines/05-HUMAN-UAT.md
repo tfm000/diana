@@ -260,20 +260,24 @@ capture/validation/save/remove/enumeration logic is automated-test-covered above
 
 - **Plan:** 05-07 (Fish vertical slice: GPU gate → accept-license → install → select →
   synthesize — the FINAL engine, completing the three-engine lineup D-01)
-- **Status:** PARTIALLY DEFERRED — the shown-but-disabled GPU-gate path (D-10), the
-  accept-once NC-license gate (D-08), and the D-16 Convert fail-fast ARE fully verified this
-  session (the LIVE no-capable-GPU path is the real state of this macOS box). ONLY the real
-  CUDA-machine install + by-ear synthesis is deferred (NOT a defect, NOT a silent skip).
-- **Deferred at:** 2026-06-15
-- **Reason:** Fish S2 Pro is NVIDIA-CUDA-focused (~12–24 GB VRAM) and effectively
-  unsupported on Apple Silicon (RESEARCH A5). The verifying machine is a macOS dev box with
-  **no NVIDIA GPU**, so a real fish-speech install + on-device CUDA synthesis is **impossible
-  here** — it requires an NVIDIA ≥12 GB GPU machine (like the Phase-3 Windows UAT). Per the
-  Task-3 checkpoint authorization ("a real GPU install/synthesize REQUIRES an NVIDIA ≥12 GB
-  machine and is almost certainly deferred to 05-HUMAN-UAT.md — not a defect"), the real
-  install → synth steps are carried forward here. **Crucially, the GPU-gate behavior that
-  HEAVY-03/SC#3 actually specifies (shown-but-disabled-with-reason on a GPU-less box) is the
-  LIVE path on this machine and IS verified below — it is not deferred.**
+- **Status:** TESTABLE-HERE (EXPERIMENTAL) — superseded by quick-260616-hk6, which corrected
+  D-09: fish-speech has **native MPS support** (PR #461, merged 2024-08-15), so Apple Silicon
+  runs (slower than CUDA, unverified upstream → EXPERIMENTAL). The GPU gate is now TRI-STATE
+  (`fish_capability` → {cuda, apple, none}). On THIS M5 Pro (48 GB unified) the gate resolves
+  to tier **"apple"**, so the Fish row is **ENABLED-experimental behind the NC-license gate**
+  here — the real Apple-Silicon MPS install + by-ear synthesis **CAN now be exercised on this
+  box** (it was previously deferred as NVIDIA-only). The accept-once NC-license gate (D-08)
+  and the D-16 Convert fail-fast remain fully verified by automated tests.
+- **Updated at:** 2026-06-16 (quick-260616-hk6)
+- **Reason it is now testable here:** the original deferral assumed Fish was effectively
+  NVIDIA-CUDA-only (RESEARCH A5). That was false — fish-speech runs on Apple Silicon via
+  Metal/MPS. The fast paths (`--compile`/Triton, the SGLang streaming engine) ARE CUDA-only
+  and S2-Pro-on-MPS is unverified upstream, so Apple Silicon is offered as **EXPERIMENTAL**
+  (runs, but may be slow/unstable). A real **NVIDIA ≥12 GB box remains the FULL-support
+  path** (tier "cuda"); an under-spec/non-arm64 host stays tier "none" (shown-but-disabled
+  with the honest NVIDIA-or-Apple reason). The MEDIUM-confidence fish-speech inference
+  signature in `fish_worker.py` STILL needs confirming against the pinned commit at real
+  install — that caveat is unchanged (it now applies equally to the MPS install here).
 
 ### What IS verified (automated + agent pre-check — the live no-GPU path, fully exercised)
 
@@ -286,24 +290,29 @@ capture/validation/save/remove/enumeration logic is automated-test-covered above
   no real torch synth). `initialize()` refuses unless **BOTH** installed **AND** a capable
   GPU is present (D-10/D-16 — both the no-GPU and not-installed cases raise an actionable
   error).
-- **GPU gate (D-09/D-10, torch-free)** — `tests/test_gpu_probe.py` (PASS):
-  `capable_nvidia_gpu()` shells `nvidia-smi` only (NO torch import), returns
-  `(False, 0, reason)` when absent / below the 12 GB floor and `(True, vram, "")` above it.
-  On THIS box (no `nvidia-smi`) it live-returns
-  `(False, 0, "requires an NVIDIA GPU with ~12+ GB VRAM (none detected)")`.
-- **UI surfaces (interaction-level AppTest)** — `tests/test_fish_slice_apptest.py` (5 PASS),
-  exercising the LIVE no-GPU path + a mocked GPU-ok path:
-  (1) WITHOUT a capable GPU the **Settings ▸ Voices Fish row is SHOWN with a DISABLED
-  Install button + the VRAM reason caption** — it is **NOT hidden**, and NO
-  license/footprint/Install control appears (no download can start) — D-10, the reconciled
-  HEAVY-03/SC#3 behavior;
-  (2) selecting Fish on Upload surfaces the GPU/VRAM reason on the readiness note and
-  `heavy_engine_failfast("fish")` drives the Convert `disabled=` (D-16/D-10);
-  (3) with `capable_nvidia_gpu` monkeypatched to `(True, 24, "")`, the Fish row then shows
-  the **Fish Audio Research License / CC-BY-NC-SA-4.0 non-commercial disclosure** + the
-  `huggingface.co/fishaudio/s2-pro` link + "I accept" and **NO Install before acceptance**
-  (D-08); (4) once accepted (persisted), the itemized deps-vs-model footprint confirm +
-  Install appear and the accept gate is gone — all with NO `torch`/`fish_speech` imported.
+- **GPU gate (D-09 corrected / D-10, torch-free, TRI-STATE)** — `tests/test_gpu_probe.py`
+  (PASS): `capable_nvidia_gpu()` shells `nvidia-smi` only (the "cuda" probe), and
+  `fish_capability()` shells `nvidia-smi` + `sysctl -n hw.memsize` to resolve
+  {cuda, apple, none} with NO torch import on any branch. tier "cuda" (NVIDIA ≥12 GB) /
+  tier "apple" (arm64 macOS ≥16 GB unified, EXPERIMENTAL via MPS) / tier "none" (honest dual
+  NVIDIA-or-Apple reason). On THIS M5 Pro (48 GB unified, no `nvidia-smi`) it live-returns
+  tier **"apple"** — Fish is enabled-experimental here.
+- **UI surfaces (interaction-level AppTest)** — `tests/test_fish_slice_apptest.py` (6 PASS),
+  exercising all three pinned tiers (the live box is tier "apple", so tiers are PINNED):
+  (1) tier **"none"** -> the **Settings ▸ Voices Fish row is SHOWN with a DISABLED Install
+  button + the honest NVIDIA-or-Apple reason caption** — NOT hidden, NO
+  license/footprint/Install control (D-10);
+  (2) tier **"apple"** -> the Fish row is **SHOWN and ENABLED-experimental**: the
+  EXPERIMENTAL Metal/MPS caption is present and (license not yet accepted) the NC-license
+  disclosure + "I accept" appears with NO disabled button;
+  (3) selecting Fish on Upload (tier "none" pinned) surfaces the honest dual reason on the
+  readiness note and `heavy_engine_failfast("fish")` drives the Convert `disabled=`
+  (D-16/D-10);
+  (4) tier **"cuda"** -> the Fish row shows the **Fish Audio Research License /
+  CC-BY-NC-SA-4.0 non-commercial disclosure** + the `huggingface.co/fishaudio/s2-pro` link +
+  "I accept" and **NO Install before acceptance** (D-08); (5) once accepted (persisted), the
+  itemized deps-vs-model footprint confirm + Install appear and the accept gate is gone — all
+  with NO `torch`/`fish_speech` imported on any path.
 - **License gate (round-trip)** — `tests/test_license_gate.py` (PASS): the per-engine
   accept-once flag is engine-scoped (`license.accepted.fish` is independent of
   `license.accepted.f5`), persists over a real temp SQLite DB across a fresh connection, and
@@ -314,18 +323,24 @@ capture/validation/save/remove/enumeration logic is automated-test-covered above
   suite). The cross-engine browser lists Fish's voices even on a GPU-less box (browsing is
   GPU-independent; only install/use is gated).
 
-### What is NOT verified (needs a human ON AN NVIDIA ≥12 GB GPU MACHINE)
+### What is NOT verified (the EXPERIMENTAL Apple-Silicon MPS install — now testable HERE)
 
-⚠️ **These steps CANNOT run on a macOS / non-NVIDIA machine** — Fish requires CUDA. Run them
-on a machine with an NVIDIA GPU reporting ≥12 GB VRAM (24 GB recommended). No terminal is
-required for any step (that is the point of HEAVY-03). Fish shares the `torch` venv with F5
-by default (D-03 / Q-B); install F5 first if you want to confirm the shared-venv reuse.
+✅ **As of quick-260616-hk6 these steps CAN run on this M5 Pro** (tier "apple"): Fish is
+enabled-experimental, so the real install + by-ear synthesis is exercisable on this Mac via
+Metal/MPS — no NVIDIA box required for the experimental path. **Expectation:** it installs
+and runs via MPS but **may be slow and/or unstable** (the fast CUDA paths are unavailable;
+S2-Pro-on-MPS is unverified upstream). A real **NVIDIA ≥12 GB box remains the FULL-support
+path** (tier "cuda") — run these there too to confirm the first-class experience. No terminal
+is required for any step (the point of HEAVY-03). Fish shares the `torch` venv with F5 by
+default (D-03 / Q-B); install F5 first if you want to confirm the shared-venv reuse.
 
-1. **GPU gate OPENS on a capable machine (D-10).** Open **Settings ▸ Voices ▸ Engine models
-   ▸ Heavy opt-in engines ▸ Fish**. On the NVIDIA box, confirm the row is now **enabled**
-   (no "requires a capable GPU" disabled state) — the live `nvidia-smi` probe reports ≥12 GB.
-   (On a GPU-less machine the row must remain SHOWN-but-DISABLED with the VRAM reason — that
-   half is already verified this session.)
+1. **GPU gate OPENS on a capable machine (D-09 corrected / D-10).** Open **Settings ▸ Voices
+   ▸ Engine models ▸ Heavy opt-in engines ▸ Fish**. On THIS M5 Pro confirm the row is
+   **enabled** with an **EXPERIMENTAL — runs via Metal/MPS, slower than NVIDIA, unsupported
+   upstream** caption (tier "apple"). On an NVIDIA box confirm it is enabled with **no**
+   experimental caption (tier "cuda", full support). On an under-spec/non-arm64 host the row
+   must remain SHOWN-but-DISABLED with the honest NVIDIA-or-Apple reason (tier "none") — that
+   tier is automated-test-verified.
 2. **Accept the NC license (D-08).** Confirm the Fish row shows the **Fish Audio Research
    License / CC-BY-NC-SA-4.0 (non-commercial / personal use only)** disclosure + a **Read the
    license** link to `huggingface.co/fishaudio/s2-pro`, and that **NO Install control is
@@ -339,14 +354,19 @@ by default (D-03 / Q-B); install F5 first if you want to confirm the shared-venv
    MEDIUM-confidence fish-speech inference call in `diana/tts/heavy_workers/fish_worker.py`
    must be confirmed against the installed package** (the `TTSInferenceEngine` /
    `ServeTTSRequest` shape, decoder config/checkpoint filenames) — adjust that single
-   function if the real API differs; the engine/JSON contract is fixed. **Q-B fallback:** if
-   installing fish-speech into the shared `torch` venv conflicts with F5's torch CUDA build,
-   switch `fish_install_spec().venv_name` to a dedicated `"fish"` and update the
+   function if the real API differs; the engine/JSON contract is fixed. **This caveat now
+   applies equally to the MPS install on this box** (the worker selects `mps` +
+   `PYTORCH_ENABLE_MPS_FALLBACK=1` when CUDA is absent). **Q-B fallback:** if installing
+   fish-speech into the shared `torch` venv conflicts with F5's torch build, switch
+   `fish_install_spec().venv_name` to a dedicated `"fish"` and update the
    `install_state._heavy_venv_name` mapping, then re-install.
 4. **Select + synthesize (by ear).** Go to **Upload**, select the **Fish** engine and the
-   **Default (Fish)** voice (or a saved custom voice). Upload a short `.txt` and click
-   **Convert to Audio**. Confirm the job completes, the audio plays, it is intelligible, and
-   it sounds like the chosen reference voice (by ear) — not silence, not a different engine.
+   **Default (Fish)** voice (or a saved custom voice). On this M5 Pro the readiness note
+   should read **"Ready — … experimental on Apple Silicon (MPS) — may be slow."** Upload a
+   short `.txt` and click **Convert to Audio**. Confirm the job completes, the audio plays,
+   it is intelligible, and it sounds like the chosen reference voice (by ear) — not silence,
+   not a different engine. **On MPS expect it to be slower** than an NVIDIA box; if it fails,
+   capture the worker stderr (the inference-signature caveat in step 3 is the likely cause).
 5. **Default + other engines untouched (D-02 / D-01).** Confirm the lightweight default
    (native_os / Kokoro / Piper) still works exactly as before, and that **Orpheus and F5
    still work** — the three-engine lineup (D-01) is complete and independent. Confirm no
@@ -359,10 +379,11 @@ by default (D-03 / Q-B); install F5 first if you want to confirm the shared-venv
 
 ### Resume signal
 
-When a human has run steps 1–5 on an **NVIDIA ≥12 GB GPU machine** and confirms Fish's GPU
-gate opens, the NC license is accepted (no terminal, no re-prompt), the real fish-speech
-inference signature is confirmed (step 3), Fish synthesizes the default/custom voice by ear,
-and the default + Orpheus + F5 engines are unchanged, this item is satisfied. Until then the
-**real GPU install + synth** remains DEFERRED (carried, not failed). The **shown-but-disabled
-GPU-gate behavior that HEAVY-03/SC#3 specifies is already verified this session** and is NOT
-part of this deferral.
+When a human has run steps 1–5 — **on this M5 Pro via the EXPERIMENTAL MPS path (tier
+"apple") and/or on an NVIDIA ≥12 GB box for the full-support path (tier "cuda")** — and
+confirms Fish's GPU gate opens (with the experimental caption on Apple Silicon), the NC
+license is accepted (no terminal, no re-prompt), the real fish-speech inference signature is
+confirmed (step 3), Fish synthesizes the default/custom voice by ear, and the default +
+Orpheus + F5 engines are unchanged, this item is satisfied. The **tri-state GPU gate
+(shown-but-disabled tier "none" / enabled tier cuda+apple) is automated-test-verified**; only
+the **real install + by-ear synth** (now exercisable here on MPS) awaits a human.

@@ -81,7 +81,17 @@ def _synthesize() -> int:
 
     req = json.loads(sys.stdin.read())
     ckpt = _checkpoint_dir()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # cuda -> mps -> cpu (D-09 correction): NVIDIA CUDA is the full-support fast path; on
+    # Apple Silicon MPS is the EXPERIMENTAL path (fish-speech has native MPS support, PR
+    # #461). PYTORCH_ENABLE_MPS_FALLBACK lets any op not yet implemented for MPS fall back
+    # to CPU instead of erroring — set BEFORE the model load below so it takes effect.
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif torch.backends.mps.is_available():
+        device = "mps"
+        os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+    else:
+        device = "cpu"
 
     # Build the two-stage fish-speech pipeline (text2semantic LLAMA queue + VQGAN decoder)
     # and wrap them in the inference engine. The decoder weights + config live in the
