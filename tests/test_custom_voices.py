@@ -22,6 +22,7 @@ GREEN until then.
 """
 
 import contextlib
+import json
 import sqlite3
 
 import pytest
@@ -39,11 +40,13 @@ with contextlib.suppress(ImportError):
     _save_voice = getattr(_cv, "save_custom_voice", None)
     _list_voices = getattr(_cv, "list_custom_voices", None)
     _remove_voice = getattr(_cv, "remove_custom_voice", None)
+    _name_for = getattr(_cv, "_name_for", None)
 
 _VALIDATE_AVAILABLE = _validate_clip is not None
 _DEST_AVAILABLE = _safe_dest is not None
 _CRUD_AVAILABLE = all(x is not None for x in (_save_voice, _list_voices, _remove_voice))
 _LIST_AVAILABLE = _list_voices is not None
+_NAME_FOR_AVAILABLE = _name_for is not None
 
 
 def _ids_of(listed):
@@ -243,3 +246,76 @@ def test_list_custom_voices_tolerates_malformed_json(tmp_path, tmp_data_paths):
     except Exception as e:  # noqa: BLE001 - the contract is "degrade, never raise"
         pytest.fail(f"list_custom_voices must tolerate malformed JSON, got {e!r}")
     assert isinstance(listed, (list, tuple))
+
+
+# --- Fresh machine: enumeration reads the CONFIGURED DB, not platformdirs ----
+@pytest.mark.skipif(not _LIST_AVAILABLE, reason="list_custom_voices lands in Wave 5")
+def test_list_custom_voices_reads_configured_db_on_a_fresh_machine(
+    tmp_path, tmp_data_paths, monkeypatch
+):
+    """A no-``db_path`` enumeration resolves through the config, not ``paths.db_path()``.
+
+    This is the deterministic form of the CI failure (run 31129161528): on a fresh
+    machine — a CI runner, or a first launch — the per-user data dir does not exist
+    yet, so the raw platformdirs path is UNOPENABLE and ``sqlite3.connect`` raises
+    ``unable to open database file``. It also pins the wrong-DB half of the same bug:
+    every other caller (``voice_labels`` / ``install_state``) is handed
+    ``config.storage.database_path`` explicitly, so enumeration must read the same DB
+    those writes land in.
+
+    The fresh machine is simulated in-process (no ``$HOME`` juggling, so it holds
+    identically on every OS and on CI): ``paths.data_dir``/``db_path`` point at a
+    directory that was never created, while the configured path points at a real
+    initialized DB holding the voice's display name. Reading the name back proves the
+    CONFIGURED DB was used; not raising proves the fresh dir was never touched.
+    """
+    import diana.config as C
+    from diana import paths
+    from diana.database import set_setting
+
+    configured_dir = tmp_path / "configured"
+    configured_dir.mkdir()
+    db = str(configured_dir / "diana.db")
+    init_db(db)
+    set_setting(db, "voice.custom.my-voice", json.dumps({"name": "My Voice"}))
+
+    cfg = C.load_config()
+    cfg.storage.database_path = db
+    monkeypatch.setattr(C, "get_config", lambda *a, **k: cfg)
+
+    # The fresh-machine per-user dir: never created, so opening it would raise.
+    missing = tmp_path / "no-such-per-user-dir"
+    monkeypatch.setattr(paths, "data_dir", lambda: missing)
+    monkeypatch.setattr(paths, "db_path", lambda: missing / "diana.db")
+
+    # The filesystem IS the index — one clip makes one enumerable voice.
+    (tmp_data_paths["custom_voices_dir"] / "my-voice.wav").write_bytes(b"clip")
+
+    try:
+        listed = _list_voices()  # no db_path -> _default_db_path()
+    except Exception as e:  # noqa: BLE001 - a fresh machine must never crash enumeration
+        pytest.fail(f"enumeration must survive an absent per-user data dir, got {e!r}")
+
+    assert "my-voice" in _ids_of(listed), "the clip on disk must enumerate as a voice"
+    names = [getattr(v, "name", None) for v in listed]
+    assert "My Voice" in names, (
+        "the display name must come from the CONFIGURED db, proving _default_db_path "
+        f"resolved through get_config().storage.database_path; got {names}"
+    )
+
+
+# --- T-05-LBLJSON: an unopenable DB degrades to the id, never raises --------
+@pytest.mark.skipif(not _NAME_FOR_AVAILABLE, reason="_name_for lands in Wave 5")
+def test_name_for_degrades_when_the_db_cannot_be_opened(tmp_path):
+    """A DB-level failure falls back to the id, like an absent/malformed value does.
+
+    ``sqlite3.Error`` (not just ``OperationalError``) is the caught breadth: any
+    database problem — a directory that does not exist, a locked or corrupt file —
+    must degrade a display name, never take down a voice list.
+    """
+    unopenable = str(tmp_path / "no-such-dir" / "diana.db")
+    try:
+        name = _name_for(unopenable, "my-voice")
+    except Exception as e:  # noqa: BLE001 - the contract is "degrade, never raise"
+        pytest.fail(f"_name_for must tolerate an unopenable DB, got {e!r}")
+    assert name == "my-voice", "an unreadable DB falls back to the id"

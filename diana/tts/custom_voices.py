@@ -43,6 +43,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 from pathlib import Path
 
 from diana.tts.base import TTSVoice
@@ -77,10 +78,26 @@ def _meta_key(voice_id: str) -> str:
 
 
 def _default_db_path() -> str:
-    """The per-user DB path (lazy ``paths`` import keeps the module import-light)."""
-    from diana import paths
+    """The CONFIGURED DB path — ``get_config().storage.database_path``, not ``paths.db_path()``.
 
-    return str(paths.db_path())
+    Resolving through the config (rather than the per-user resolver directly) makes this
+    module agree with every other caller: ``voice_labels`` and ``install_state`` are always
+    HANDED ``config.storage.database_path`` explicitly, so enumeration must read the same DB
+    those writes land in. A customized ``storage.database_path`` is therefore honored, and a
+    fresh machine whose per-user data dir does not exist yet cannot hand ``sqlite3`` a
+    directory-less path. In-app behavior is unchanged: that field's default value already IS
+    ``str(paths.db_path())`` (``config.py:76``).
+
+    The ``diana.config`` import stays INSIDE the body deliberately — the ``get_config``
+    attribute is then looked up at CALL time, so a test's
+    ``monkeypatch.setattr(diana.config, "get_config", ...)`` takes effect (exactly what
+    ``test_custom_voices_apptest._tmp_config`` relies on). A module-top import would bind the
+    original function once at import time and silently break that seam. It also keeps the
+    module import-light, like the lazy ``paths`` imports elsewhere in this file.
+    """
+    from diana.config import get_config
+
+    return get_config().storage.database_path
 
 
 def safe_custom_voice_dest(name: str) -> Path:
@@ -300,11 +317,18 @@ def _name_for(db_path: str, voice_id: str) -> str:
 
     Tolerates an absent/empty/malformed JSON value → returns the id rather than raising,
     so a corrupt metadata value can never crash enumeration (the
-    ``voice_labels.get_label_overrides`` idiom). ``get_setting`` is imported lazily.
+    ``voice_labels.get_label_overrides`` idiom). An UNOPENABLE or otherwise erroring DB
+    (a not-yet-created data dir on a fresh machine, a locked or corrupt file) degrades the
+    same way — any ``sqlite3.Error`` falls back to the id, because a database problem must
+    never take down a voice list (analog 3, T-05-LBLJSON). ``get_setting`` is imported lazily.
     """
     from diana.database import get_setting
 
-    raw = get_setting(db_path, _meta_key(voice_id), None)
+    try:
+        raw = get_setting(db_path, _meta_key(voice_id), None)
+    except sqlite3.Error as e:
+        logger.warning("Custom-voice metadata unreadable for %s (%s); using the id", voice_id, e)
+        return voice_id
     if not raw:
         return voice_id
     try:
