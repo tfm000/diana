@@ -49,6 +49,12 @@ logger = logging.getLogger(__name__)
 # page's DEFAULT_PREVIEW_TEXT so both pages sound the same.
 _PREVIEW_TEXT = "Hello, this is a preview of my voice. Welcome to Diana."
 
+# A one-shot message stashed by a Voices-tab action that reruns immediately, rendered
+# and popped once at the top of the tab on the NEXT run. An ``st.success`` emitted just
+# before ``st.rerun()`` is discarded by that rerun and never reaches the user — so the
+# freed-space confirmations for uninstall/remove are stashed here instead.
+_VOICES_FLASH_KEY = "_voices_flash"
+
 
 @st.cache_data(show_spinner=False)
 def _curated_piper_entries() -> dict:
@@ -195,6 +201,26 @@ def _can_spawn_download(state: dict | None) -> bool:
     Kept pure so the guard is unit-testable alongside ``_download_action``.
     """
     return _download_action(state) not in ("downloading", "cancelling")
+
+
+def _render_voices_flash() -> None:
+    """Render-and-pop the one-shot Voices-tab message stashed before an ``st.rerun()``.
+
+    The destructive Voices-tab actions (Piper voice uninstall, custom-voice remove,
+    heavy-engine uninstall) all confirm the space they freed and then immediately
+    ``st.rerun()`` to refresh the row. A success rendered just before that rerun is
+    thrown away with the rest of the pre-rerun tree, so the user never actually sees
+    the confirmation. Each action therefore STASHES its message under
+    ``_VOICES_FLASH_KEY`` and this helper POPS and renders it on the following run.
+
+    Keyed ONCE for the whole tab, so a single call site covers all three actions (they
+    all render inside the Voices tab, and only one can fire per run). The pop makes the
+    message strictly one-shot — it survives exactly one rerun and never reappears.
+    Script-thread only, like every other ``st.*`` call on this page.
+    """
+    message = st.session_state.pop(_VOICES_FLASH_KEY, None)
+    if message:
+        st.success(message)
 
 
 @st.fragment(run_every="0.5s")
@@ -624,7 +650,11 @@ def _render_uninstall_control(voice_id: str, footprint: int) -> None:
                 freed = install_state.uninstall_piper_voice(voice_id)
                 st.session_state.pop(_confirm_key, None)
                 clear_voice_cache()  # voice leaves every picker with no restart (04-03)
-                st.success(f"Uninstalled. Freed {freed / 1e6:.1f} MB.")
+                # Stash, don't render: the st.rerun() below would discard a success
+                # drawn here, so _render_voices_flash shows it on the next run.
+                st.session_state[_VOICES_FLASH_KEY] = (
+                    f"Uninstalled. Freed {freed / 1e6:.1f} MB."
+                )
                 st.rerun()
         with _no:
             if st.button("Cancel", key=f"uninstall_no_{voice_id}"):
@@ -671,7 +701,10 @@ def _render_custom_voice_remove(voice_id: str, display_name: str) -> None:
                 )
                 st.session_state.pop(_confirm_key, None)
                 clear_voice_cache()  # voice leaves every picker + browser, no restart
-                st.success(f"Removed '{display_name}'. Freed {freed / 1e6:.1f} MB.")
+                # Stash, don't render — the rerun below discards the pre-rerun tree.
+                st.session_state[_VOICES_FLASH_KEY] = (
+                    f"Removed '{display_name}'. Freed {freed / 1e6:.1f} MB."
+                )
                 st.rerun()
         with _no:
             if st.button("Cancel", key=f"cv_remove_no_{voice_id}"):
@@ -847,8 +880,11 @@ def _render_heavy_uninstall_control(engine: str, footprint: int) -> None:
                 freed = install_state.uninstall_heavy_engine(engine)
                 st.session_state.pop(_confirm_key, None)
                 clear_voice_cache()
-                st.success(f"Uninstalled {engine.capitalize()}. "
-                           f"Freed {freed / 1e6:.0f} MB.")
+                # Stash, don't render — the rerun below discards the pre-rerun tree.
+                st.session_state[_VOICES_FLASH_KEY] = (
+                    f"Uninstalled {engine.capitalize()}. "
+                    f"Freed {freed / 1e6:.0f} MB."
+                )
                 st.rerun()
         with _no:
             if st.button("Cancel", key=f"heavy_uninstall_no_{engine}"):
@@ -1606,6 +1642,12 @@ with tab_general:
 # ---------------------------------------------------------------------------
 with tab_voices:
     st.subheader("Voices")
+
+    # The one-shot freed-space confirmation from a destructive action on the PREVIOUS
+    # run (uninstall a Piper voice / remove a custom voice / uninstall a heavy engine).
+    # Popped here, before the rows render; every setter calls st.rerun() immediately
+    # after stashing, so a message can never be popped in the same run that set it.
+    _render_voices_flash()
 
     # -----------------------------------------------------------------------
     # Cross-engine browser + per-voice label editor (D-10/D-14/D-15). Lists

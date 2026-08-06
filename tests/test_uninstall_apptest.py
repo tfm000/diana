@@ -123,6 +123,28 @@ def _has_text(elements, needle):
     return any(needle in str(getattr(e, "value", "")).lower() for e in elements)
 
 
+def _success_containing(at, needle):
+    """True if a success message contains ``needle``, tolerating both rerun semantics.
+
+    The freed-space confirmations use the flash pattern: the action stashes its message
+    in ``session_state`` and immediately ``st.rerun()``s, so the message renders on the
+    NEXT run. AppTest disagrees across versions about whether ``.run()`` follows that
+    rerun — streamlit <=1.56 does NOT (the captured tree is the PRE-rerun one, so the
+    flash has not been drawn yet), while >=1.61 DOES (the flash is already in the final
+    tree). So: check first, and only if the needle is absent, run once more and re-check.
+    On 1.61 no extra run happens; on 1.56 the single extra run reveals the flash.
+
+    The check is NEEDLE-based, never emptiness-based: the page renders other
+    ``st.success`` badges ("Ready · X MB on disk", "Ready · Kokoro model installed"),
+    so ``at.success`` is non-empty even when the flash is absent, and an emptiness gate
+    would never trigger the extra run.
+    """
+    if _has_text(at.success, needle):
+        return True
+    at.run()
+    return _has_text(at.success, needle)
+
+
 # --- Uninstall confirm flow (D-16) ------------------------------------------
 def test_uninstall_confirm_flow_deletes_and_clears_cache(monkeypatch, tmp_path):
     """Uninstall an installed Piper voice: confirm appears -> Confirm -> file gone."""
@@ -147,7 +169,7 @@ def test_uninstall_confirm_flow_deletes_and_clears_cache(monkeypatch, tmp_path):
     confirm.click().run()
     assert not onnx.exists() and not cfg.exists(), "confirm deletes the .onnx + .onnx.json pair"
     assert clear_cache.called, "uninstall must clear the shared voice cache (no-restart refresh)"
-    assert _has_text(at.success, "uninstalled"), "a success message reports the freed space"
+    assert _success_containing(at, "uninstalled"), "a success message reports the freed space"
 
 
 def test_uninstall_cancel_keeps_the_file(monkeypatch, tmp_path):
