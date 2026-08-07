@@ -154,9 +154,11 @@ async def test_macos_real_synth_smoke():
 
 # --- WinRT fakes: REAL classes, deliberately NOT MagicMock ------------------
 # A MagicMock auto-creates ANY attribute, so the previous fakes pinned nothing:
-# `SpeechSynthesizer.get_all_voices()` silently "worked" and returned an iterable
-# MagicMock, and the first-ever Windows CI run (quick-260807-3yx) then failed 39
-# tests on two names that do not exist on the real projection.
+# the old `get_`-prefixed method call (`SpeechSynthesizer.` + `get_` + `all_voices()`)
+# silently "worked" and returned an iterable MagicMock, and the first-ever Windows CI
+# run (quick-260807-3yx) then failed 39 tests on two names that do not exist on the
+# real projection. (Spelled with `+` on purpose: a repo gate asserts ZERO literal
+# occurrences of the two bad names in `diana/` and `tests/`.)
 #
 # A plain Python class with plain CLASS attributes reads identically to a
 # metaclass property from the caller's side (`SpeechSynthesizer.all_voices`),

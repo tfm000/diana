@@ -22,6 +22,7 @@ to live gates with zero edits.
 
 import inspect
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -114,8 +115,11 @@ def test_provision_venv_uv_argv_and_order(tmp_path, tmp_data_paths, mock_uv,
     # uv pip install --python <venv-python> orpheus-cpp
     assert "pip" in install_call and "install" in install_call
     assert "--python" in install_call
+    # Match on path COMPONENTS, not a "bin/python" suffix: Windows renders
+    # str(Path) with backslashes, so a forward-slash suffix never matches there.
     assert any(
-        str(x).endswith(("bin/python", "Scripts/python.exe"))
+        Path(str(x)).name in ("python", "python.exe")
+        and Path(str(x)).parent.name in ("bin", "Scripts")
         for x in install_call
     ), "install must target the venv's own python (ABI pinned, not the app)"
     assert "orpheus-cpp" in install_call

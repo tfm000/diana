@@ -98,7 +98,10 @@ async def test_synthesize_subprocess_cmd_and_stdin_json(tmp_data_paths, fake_ven
     # Bytes round-trip from the worker's temp WAV.
     assert bytes(data[:4]) == b"RIFF" and bytes(data[8:12]) == b"WAVE"
     # argv = [<venv python>, <orpheus_worker.py>]
-    assert str(captured["cmd"][0]).endswith(("bin/python", "Scripts/python.exe"))
+    # Match on path COMPONENTS, not a "bin/python" suffix: Windows renders
+    # str(Path) with backslashes, so a forward-slash suffix never matches there.
+    _py = Path(str(captured["cmd"][0]))
+    assert _py.name in ("python", "python.exe") and _py.parent.name in ("bin", "Scripts")
     assert str(captured["cmd"][1]).endswith("orpheus_worker.py")
     # Text is DATA on stdin, never interpolated into argv (T-05-CMD).
     assert "hello world" not in " ".join(str(c) for c in captured["cmd"])

@@ -34,8 +34,8 @@ def _load_snapshot(name: str) -> tuple[str, str]:
     clean_text() output is already stripped, so a trailing newline an editor may
     append to a fixture is not significant — strip it from both files.
     """
-    inp = (_FIXTURE_DIR / f"{name}.in.txt").read_text().rstrip("\n")
-    expected = (_FIXTURE_DIR / f"{name}.expected.txt").read_text().rstrip("\n")
+    inp = (_FIXTURE_DIR / f"{name}.in.txt").read_text(encoding="utf-8").rstrip("\n")
+    expected = (_FIXTURE_DIR / f"{name}.expected.txt").read_text(encoding="utf-8").rstrip("\n")
     return inp, expected
 
 

@@ -1492,7 +1492,8 @@ def _sync_streamlit_config(max_upload_mb: int, theme: str = "device") -> None:
         "\n"
         "[theme]\n"
         'font = "serif"\n'
-        f'base = "{base}"\n'
+        f'base = "{base}"\n',
+        encoding="utf-8",
     )
 
 st.set_page_config(

@@ -92,7 +92,7 @@ for _modname, _attr in (
 def test_fixture_present_and_shaped():
     """The committed manifest fixture is valid and carries a multi-speaker voice."""
     assert _FIXTURE.is_file(), "tests/fixtures/voices_manifest.json must be committed"
-    data = json.loads(_FIXTURE.read_text())
+    data = json.loads(_FIXTURE.read_text(encoding="utf-8"))
     assert len(data) >= 2, "fixture needs >= 2 voice entries"
     # At least one populated speaker_id_map (the multi-speaker case).
     assert any(e.get("speaker_id_map") for e in data.values())
@@ -111,7 +111,7 @@ def test_fixture_present_and_shaped():
 )
 def test_parse_manifest_entry():
     """The lessac entry maps to a TTSVoice with folded language + correct tier."""
-    data = json.loads(_FIXTURE.read_text())
+    data = json.loads(_FIXTURE.read_text(encoding="utf-8"))
     voices = parse_manifest(data)
     assert all(isinstance(v, TTSVoice) for v in voices)
     assert len(voices) == len(data), "every manifest entry -> exactly one voice"
@@ -147,7 +147,7 @@ def test_parse_manifest_entry():
 )
 def test_curated_subset():
     """A curated selector returns a small flat subset; group-by-language buckets."""
-    data = json.loads(_FIXTURE.read_text())
+    data = json.loads(_FIXTURE.read_text(encoding="utf-8"))
     voices = parse_manifest(data)
 
     if _curated is not None:

@@ -84,7 +84,10 @@ async def test_synthesize_carries_ref_and_gen_text(tmp_data_paths, fake_venv,
         data = await eng.synthesize("clone this sentence", voice=voice_id, speed=1.0)
 
     assert bytes(data[:4]) == b"RIFF" and bytes(data[8:12]) == b"WAVE"
-    assert str(captured["cmd"][0]).endswith(("bin/python", "Scripts/python.exe"))
+    # Match on path COMPONENTS, not a "bin/python" suffix: Windows renders
+    # str(Path) with backslashes, so a forward-slash suffix never matches there.
+    _py = Path(str(captured["cmd"][0]))
+    assert _py.name in ("python", "python.exe") and _py.parent.name in ("bin", "Scripts")
     assert str(captured["cmd"][1]).endswith("f5_worker.py")
     req = json.loads(captured["input"])
     assert req.get("gen_text") == "clone this sentence"  # text to speak

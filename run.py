@@ -29,7 +29,8 @@ def _sync_config_toml() -> None:
         "\n"
         "[theme]\n"
         'font = "serif"\n'
-        f'base = "{base}"\n'
+        f'base = "{base}"\n',
+        encoding="utf-8",
     )
 
 

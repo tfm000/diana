@@ -49,7 +49,8 @@ class TestLoadConfig:
             "  engine: piper\n"
             "  voice: en_US-lessac\n"
             "dashboard:\n"
-            "  max_upload_mb: 512\n"
+            "  max_upload_mb: 512\n",
+            encoding="utf-8",
         )
         config = load_config(yaml_file)
         assert config.tts.engine == "piper"
@@ -63,7 +64,8 @@ class TestLoadConfig:
         yaml_file.write_text(
             "tts:\n"
             "  engine: kokoro\n"
-            "  unknown_key: some_value\n"
+            "  unknown_key: some_value\n",
+            encoding="utf-8",
         )
         config = load_config(yaml_file)
         assert config.tts.engine == "kokoro"

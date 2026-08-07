@@ -65,12 +65,12 @@ def _ids_of(listed):
 def _save_one(save_fn, db, engine, voice_id, wav, txt):
     """Call save_custom_voice across its documented signature shapes (db, engine first)."""
     meta = {"id": voice_id, "name": "My Voice",
-            "ref_file": str(wav), "ref_text": txt.read_text()}
+            "ref_file": str(wav), "ref_text": txt.read_text(encoding="utf-8")}
     attempts = (
         lambda: save_fn(db, engine, voice_id, meta),                      # (db,engine,id,meta)
         lambda: save_fn(db, engine, meta),                                # (db,engine,meta)
-        lambda: save_fn(db, engine, voice_id, str(wav), txt.read_text()),  # (db,engine,id,ref,text)
-        lambda: save_fn(db, engine, "My Voice", str(wav), txt.read_text()),
+        lambda: save_fn(db, engine, voice_id, str(wav), txt.read_text(encoding="utf-8")),  # (db,engine,id,ref,text)
+        lambda: save_fn(db, engine, "My Voice", str(wav), txt.read_text(encoding="utf-8")),
     )
     last = None
     for attempt in attempts:
@@ -86,7 +86,7 @@ def _save_one(save_fn, db, engine, voice_id, wav, txt):
 def test_validate_clip_accepts_good_16khz_clip(temp_clip):
     """A ~3 s 16 kHz clip + non-empty transcript validates True (sub-24 kHz OK)."""
     wav, txt = temp_clip(seconds=3.0, samplerate=16000)
-    ok, msg = _validate_clip(str(wav), txt.read_text())
+    ok, msg = _validate_clip(str(wav), txt.read_text(encoding="utf-8"))
     assert ok is True
     assert isinstance(msg, str)
 
@@ -106,7 +106,7 @@ def test_validate_clip_rejects_empty_transcript(temp_clip):
 def test_validate_clip_rejects_too_short(temp_clip):
     """A sub-second clip is below the clone floor and rejected (never crashes)."""
     wav, txt = temp_clip(seconds=0.4)
-    ok, msg = _validate_clip(str(wav), txt.read_text())
+    ok, msg = _validate_clip(str(wav), txt.read_text(encoding="utf-8"))
     assert ok is False
     assert msg
 
@@ -204,7 +204,7 @@ def test_save_mp3_named_upload_resolves_mp3_dest(tmp_path, tmp_data_paths, temp_
 
     upload = _FakeUpload(raw_bytes)
 
-    ok, msg = _save_voice(db, "f5", "Mp3 Voice", upload, txt.read_text())
+    ok, msg = _save_voice(db, "f5", "Mp3 Voice", upload, txt.read_text(encoding="utf-8"))
     assert ok, f"save_custom_voice rejected the mp3-named upload: {msg}"
 
     # The saved clip must resolve from custom_voice_ref and appear in list_custom_voices.

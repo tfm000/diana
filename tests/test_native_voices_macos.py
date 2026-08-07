@@ -56,7 +56,7 @@ def _parse_fixture():
     to mocking ``subprocess.run`` so the public ``enumerate_macos_voices()`` is
     driven from the fixture instead of the live machine.
     """
-    text = _FIXTURE.read_text()
+    text = _FIXTURE.read_text(encoding="utf-8")
     if _parse_say is not None:
         return _parse_say(text)
     # Fall back to driving the public entry point off the fixture via a mock.
@@ -71,7 +71,7 @@ def _parse_fixture():
 def test_fixture_present_and_shaped():
     """The committed say fixture exists and carries the parser's edge cases."""
     assert _FIXTURE.is_file(), "tests/fixtures/say_voices.txt must be committed"
-    lines = [ln for ln in _FIXTURE.read_text().splitlines() if ln.strip()]
+    lines = [ln for ln in _FIXTURE.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert len(lines) >= 30, "stock-Mac say -v '?' yields well over 30 voices"
     # Every non-blank line is a voice line ending in a '# <sample>' delimiter.
     assert all("#" in ln for ln in lines)
@@ -87,7 +87,7 @@ def test_fixture_present_and_shaped():
 def test_parse_say_output():
     """Every non-blank `say -v '?'` line parses to a TTSVoice; parens survive."""
     voices = _parse_fixture()
-    non_blank = [ln for ln in _FIXTURE.read_text().splitlines() if ln.strip()]
+    non_blank = [ln for ln in _FIXTURE.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert len(voices) == len(non_blank), "every non-blank line -> exactly one voice"
     assert all(isinstance(v, TTSVoice) for v in voices)
     # A nested-parenthetical name keeps its name and extracts a real locale.
