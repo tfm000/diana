@@ -267,17 +267,35 @@ class NativeOSEngine:
     # recommended path, avoiding the slow stream-reader helper, and a bare await
     # rather than wrapping the awaitable in a task); enumeration mapping
     # VoiceInformation -> TTSVoice with tier inferred from "OneCore" in the voice
-    # Id; default = get_default_voice().id.
+    # Id; default = the `default_voice` property.
     #
-    # ASSUMPTION A1 (MEDIUM, Windows-UAT-pinned): the exact PyWinRT snake_case
-    # member spelling — `get_all_voices()` (vs `.all_voices`), `get_default_voice()`
-    # (vs `default_voice`), the `synth.voice = v` setter, `synthesize_text_to_stream_async`,
-    # `.options.speaking_rate`, `.display_name` — is documented (pywinrt.readthedocs.io,
-    # MS Learn) but UNVERIFIABLE on macOS (the winrt-* C-extensions don't build here).
-    # It is verified/corrected on a real Windows box in Plan 05 Task 3 UAT
-    # (see 03-05-WINDOWS-UAT-DEFERRED.md). If `dir(SpeechSynthesizer)` shows
-    # different names, this is the single most likely fix point — adjust these
-    # three methods to match the real spelling and re-run.
+    # PINNED (was ASSUMPTION A1): the two static-member spellings are now fixed.
+    # `all_voices` and `default_voice` are metaclass PROPERTIES declared on
+    # `SpeechSynthesizer_Static` (SpeechSynthesizer carries
+    # `metaclass=SpeechSynthesizer_Static`), so they are class-attribute READS —
+    # no `get_` prefix and no call parentheses.
+    #
+    # Evidence: the official winrt-Windows.Media.SpeechSynthesis 3.2.1 wheel stubs
+    # (`_winrt_windows_media_speechsynthesis.pyi`, `class SpeechSynthesizer_Static`:
+    # `@_property def all_voices(cls)`, `@_property def default_voice(cls)`),
+    # corroborated by the first-ever Windows CI run (quick-260807-3yx), where every
+    # windows job failed 39 tests on the old guess.
+    #
+    # HISTORY — do not re-guess: this code previously assumed the `get_`-PREFIXED,
+    # PARENTHESISED METHOD forms of those same two members, i.e. `get_` + `all_voices()`
+    # and `get_` + `default_voice()`. They looked documented, but they were WRONG —
+    # no such names exist on the projection. Reading them raised AttributeError, which
+    # took down the whole Settings page (the probe runs at page module level) and
+    # cascaded into ~32 test failures. (The two bad names are spelled with a `+` above
+    # on purpose: a repo gate greps `diana/` and `tests/` and asserts ZERO literal
+    # occurrences of them, so writing them out verbatim here — even in a comment —
+    # would trip it. Keep the history; keep it unspellable.)
+    #
+    # Everything ELSE in this branch is stub-CONFIRMED correct and must not be
+    # "fixed": `synthesize_text_to_stream_async`, the `synth.voice` getter/setter,
+    # `options.speaking_rate`, `VoiceInformation.display_name`/`.gender`/`.id`/
+    # `.language`, `SpeechSynthesisStream.size`, `Buffer(capacity)` + the buffer
+    # protocol, `stream.read_async(...)`, and `VoiceGender.FEMALE == 1`.
     #
     # winrt imports are LAZY inside each method (never module-top) — matches
     # Diana's lazy-SDK convention and the `; sys_platform == 'win32'` gating, so
@@ -299,7 +317,7 @@ class NativeOSEngine:
 
         synth = SpeechSynthesizer()
         if voice:                                   # empty id => OS default (D-02)
-            for v in SpeechSynthesizer.get_all_voices():
+            for v in SpeechSynthesizer.all_voices:
                 if v.id == voice:
                     synth.voice = v
                     break
@@ -324,7 +342,7 @@ class NativeOSEngine:
         from winrt.windows.media.speechsynthesis import SpeechSynthesizer, VoiceGender
 
         voices: list[TTSVoice] = []
-        for v in SpeechSynthesizer.get_all_voices():
+        for v in SpeechSynthesizer.all_voices:
             vid = v.id or ""
             voices.append(TTSVoice(
                 id=vid,
@@ -342,7 +360,12 @@ class NativeOSEngine:
         """Return the OS system default voice id (D-02)."""
         from winrt.windows.media.speechsynthesis import SpeechSynthesizer
 
-        return SpeechSynthesizer.get_default_voice().id
+        # A Windows image with no installed voices yields the D-02 empty string
+        # (let the OS choose) rather than an AttributeError on a None default.
+        default = SpeechSynthesizer.default_voice
+        if default is None:
+            return ""
+        return default.id or ""
 
     @staticmethod
     def is_sapi5_only(voices: list[TTSVoice]) -> bool:
