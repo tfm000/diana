@@ -4,6 +4,7 @@ Local-only enumeration (kokoro + piper), removed-engine ValueError, and the
 pure stale-engine fallback helper. No model files or network needed.
 """
 
+import sys
 from unittest.mock import MagicMock
 
 import pytest
@@ -54,14 +55,40 @@ class TestListEngines:
 
 
 class TestNativeOsVoices:
-    def test_native_os_dynamic_voices(self):
+    def test_native_os_has_no_static_voices(self):
         # D-04: native_os enumerates voices dynamically (NOT a static cls.VOICES
-        # attribute). On macOS this exercises the real `say` path via the engine.
+        # attribute). This half of D-04 is platform-INDEPENDENT — it is a fact about the
+        # class shape, not about the host — so it carries NO gate and keeps running
+        # everywhere, including the Linux CI runners where native_os itself is
+        # unsupported by design.
         from diana.tts.native_os_engine import NativeOSEngine
-        from diana.tts.registry import get_engine_voices
 
         # native_os deliberately has no static VOICES class attribute.
         assert not hasattr(NativeOSEngine, "VOICES")
+
+    @pytest.mark.skipif(
+        sys.platform != "darwin",
+        reason="live native_os enumeration shells the real macOS `say`",
+    )
+    def test_native_os_live_enumeration(self):
+        # get_engine_voices() constructs and initializes a short-lived NativeOSEngine, so
+        # this exercises the real `say` path end to end.
+        #
+        # Gated to darwin ONLY, deliberately — do NOT widen to ("darwin", "win32"):
+        #   * Diana targets Windows + macOS, so NativeOSEngine.initialize() legitimately
+        #     raises RuntimeError on Linux. The product is right; the test was ungated.
+        #   * The win32 live path on a headless runner is unverified territory (no audio
+        #     subsystem guarantees). Windows stays covered by the mocked WinRT tests in
+        #     tests/test_native_os_engine.py plus the deferred human Windows UAT at
+        #     .planning/phases/03-native-os-tts-new-default/03-05-WINDOWS-UAT-DEFERRED.md.
+        #   * CI must stay deterministic.
+        #
+        # Intentionally the skipif DECORATOR rather than the in-body pytest.skip() form
+        # used by tests/test_native_os_engine.py and tests/test_native_voices_macos.py: a
+        # decorator condition is evaluated at COLLECTION time, so the skip and its reason
+        # are visible in -v / -rs / --collect-only on the Linux runner and the gate stays
+        # introspectable via pytestmark. Do not convert it back.
+        from diana.tts.registry import get_engine_voices
 
         voices = get_engine_voices("native_os")
         assert len(voices) >= 1
