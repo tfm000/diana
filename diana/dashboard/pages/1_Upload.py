@@ -132,10 +132,20 @@ def _engine_default_voice(engine_name: str, config_default: str) -> str:
     on every rerun — fall back to the saved config voice for those.
     """
     if engine_name == "native_os":
-        from diana.tts.native_os_engine import NativeOSEngine
-        eng = NativeOSEngine()                       # __init__ loads nothing
-        getter = getattr(eng, "default_voice", lambda: "")
-        return getter()
+        # This runs at page module level, so a single engine's probe must never
+        # take down the whole page — degrade to the OS default instead (D-02).
+        try:
+            from diana.tts.native_os_engine import NativeOSEngine
+            eng = NativeOSEngine()                   # __init__ loads nothing
+            getter = getattr(eng, "default_voice", lambda: "")
+            return getter() or ""
+        except Exception as e:
+            logger.warning("native_os default-voice probe failed: %s", e)
+            st.caption(
+                "Couldn't read your system's default voice — using the operating "
+                "system default."
+            )
+            return ""
     return config_default or ""
 
 
